@@ -1,8 +1,10 @@
-"""Built-in example models, each paired with its own grayscale parameters.
+"""Built-in example models, each parametric (editable dimensions) and paired
+with its own grayscale parameters.
 
 Every preset bundles a procedurally generated mesh (no STL files to ship) with a
 full config in the public schema, so clicking one in the UI loads the geometry
-*and* dials in a showcase of one grayscale mode.
+*and* dials in a showcase of one grayscale mode. ``params`` lists the editable
+size knobs (all in mm) the UI exposes.
 """
 
 from __future__ import annotations
@@ -40,49 +42,58 @@ def _uniform(value: int = 255) -> dict:
     return _config({"default_solid_value": value})
 
 
-# (id, name, description, mesh builder, config)
+def _p(key: str, label: str, default: float) -> dict:
+    return {"key": key, "label": label, "default": default}
+
+
+# (id, name, description, params [editable mm dims], mesh builder(params), config)
 PRESETS = [
     {
         "id": "prism",
         "name": "Rectangular prism",
-        # 10 mm long (X) × 7 mm wide (Y) × 4 mm tall (Z)
-        "description": "10 × 7 × 4 mm — the canonical hollow-cube demo",
-        "build": lambda: trimesh.creation.box(extents=[10.0, 7.0, 4.0]),
+        "description": "the canonical support-column demo",
+        "params": [_p("length", "Length (mm)", 10.0), _p("width", "Width (mm)", 7.0), _p("height", "Height (mm)", 4.0)],
+        "build": lambda p: trimesh.creation.box(extents=[p["length"], p["width"], p["height"]]),
         "config": _cubic(),
     },
     {
         "id": "cube",
         "name": "Cube",
-        "description": "8 mm cube — larger 8-voxel hollow cubes",
-        "build": lambda: trimesh.creation.box(extents=[8.0, 8.0, 8.0]),
+        "description": "larger 8-voxel cubes",
+        "params": [_p("edge", "Edge (mm)", 8.0)],
+        "build": lambda p: trimesh.creation.box(extents=[p["edge"], p["edge"], p["edge"]]),
         "config": _cubic(cube_xy_px=8, cube_z_layers=8, grey_value=100, boundary_px=4),
     },
     {
         "id": "cylinder",
         "name": "Cylinder",
-        "description": "Ø10 × 6 mm — edge-feather gradient on a round wall",
-        "build": lambda: trimesh.creation.cylinder(radius=5.0, height=6.0),
+        "description": "edge-feather gradient on a round wall",
+        "params": [_p("diameter", "Diameter (mm)", 10.0), _p("height", "Height (mm)", 6.0)],
+        "build": lambda p: trimesh.creation.cylinder(radius=p["diameter"] / 2.0, height=p["height"]),
         "config": _gradient(40, 255, 1.0),
     },
     {
         "id": "sphere",
         "name": "Sphere",
-        "description": "Ø10 mm — soft edge-feather gradient",
-        "build": lambda: trimesh.creation.icosphere(subdivisions=3, radius=5.0),
+        "description": "soft edge-feather gradient",
+        "params": [_p("diameter", "Diameter (mm)", 10.0)],
+        "build": lambda p: trimesh.creation.icosphere(subdivisions=3, radius=p["diameter"] / 2.0),
         "config": _gradient(20, 255, 1.5),
     },
     {
         "id": "torus",
         "name": "Torus",
-        "description": "Ø16 ring, 4 mm tube — hollow cubes in a loop",
-        "build": lambda: trimesh.creation.torus(major_radius=6.0, minor_radius=2.0),
+        "description": "support columns in a loop",
+        "params": [_p("ring_diameter", "Ring Ø (mm)", 12.0), _p("tube_diameter", "Tube Ø (mm)", 4.0)],
+        "build": lambda p: trimesh.creation.torus(major_radius=p["ring_diameter"] / 2.0, minor_radius=p["tube_diameter"] / 2.0),
         "config": _cubic(cap_bottom_layers=1, cap_top_layers=1, grey_value=110),
     },
     {
         "id": "cone",
         "name": "Cone",
-        "description": "Ø10 × 8 mm — uniform full exposure",
-        "build": lambda: trimesh.creation.cone(radius=5.0, height=8.0),
+        "description": "uniform full exposure",
+        "params": [_p("diameter", "Diameter (mm)", 10.0), _p("height", "Height (mm)", 8.0)],
+        "build": lambda p: trimesh.creation.cone(radius=p["diameter"] / 2.0, height=p["height"]),
         "config": _uniform(255),
     },
 ]
@@ -94,8 +105,21 @@ def get_preset(preset_id: str) -> dict | None:
     return _BY_ID.get(preset_id)
 
 
-def build_preset_mesh(preset_id: str) -> trimesh.Trimesh:
-    return _BY_ID[preset_id]["build"]()
+def resolve_params(preset: dict, overrides: dict | None) -> dict:
+    """Merge user overrides over a preset's defaults; clamp each to a sane range."""
+    values = {p["key"]: float(p["default"]) for p in preset["params"]}
+    for key in values:
+        if overrides and key in overrides:
+            try:
+                values[key] = max(0.1, min(500.0, float(overrides[key])))
+            except (TypeError, ValueError):
+                pass
+    return values
+
+
+def build_preset_mesh(preset_id: str, overrides: dict | None = None) -> trimesh.Trimesh:
+    preset = _BY_ID[preset_id]
+    return preset["build"](resolve_params(preset, overrides))
 
 
 def mode_of(config: dict) -> str:

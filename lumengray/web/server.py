@@ -28,7 +28,7 @@ from ..config import ConfigError, config_from_dict
 from ..pipeline import render_layer, resolve_regions, run
 from ..preview import sample_indices
 from ..slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
-from .presets import PRESETS, build_preset_mesh, get_preset, mode_of
+from .presets import PRESETS, build_preset_mesh, get_preset, mode_of, resolve_params
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
@@ -39,6 +39,10 @@ class Upload:
     path: str
     name: str
     mesh: trimesh.Trimesh
+
+
+class PresetRequest(BaseModel):
+    params: dict | None = None
 
 
 class PreviewRequest(BaseModel):
@@ -154,6 +158,7 @@ def create_app() -> FastAPI:
                     "id": preset["id"],
                     "name": preset["name"],
                     "description": preset["description"],
+                    "params": preset["params"],  # editable mm dimensions
                     "extents_mm": [round(v, 1) for v in extents],
                     "mode": mode_of(preset["config"]),
                 }
@@ -161,12 +166,20 @@ def create_app() -> FastAPI:
         return out
 
     @app.post("/api/preset/{preset_id}")
-    def load_preset(preset_id: str) -> dict:
+    def load_preset(preset_id: str, req: PresetRequest | None = None) -> dict:
         preset = get_preset(preset_id)
         if preset is None:
             raise HTTPException(404, "Unknown preset")
-        result = _register(build_preset_mesh(preset_id), f"{preset['name']}.stl")
+        overrides = req.params if req else None
+        values = resolve_params(preset, overrides)
+        try:
+            mesh = preset["build"](values)
+        except Exception as error:  # noqa: BLE001 - bad dimensions → 400, not 500
+            raise HTTPException(400, f"Could not build model: {error}") from error
+        result = _register(mesh, f"{preset['name']}.stl")
         result["config"] = preset["config"]
+        result["params"] = preset["params"]
+        result["values"] = values
         return result
 
     @app.get("/api/model/{upload_id}")

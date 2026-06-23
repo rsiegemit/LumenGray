@@ -2,6 +2,7 @@
 // 3D lives in viewer3d.js; config assembly in config.js; helpers in core.js.
 
 import { $, state, status, downloadBlob } from "./core.js";
+import { postJSON } from "./api.js";
 import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs, currentMode } from "./config.js";
 import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode } from "./viewer3d.js";
 
@@ -18,6 +19,10 @@ const SHAPE_ICONS = {
   cone: svg('<path d="M12 3l8 15H4z"/><ellipse cx="12" cy="18" rx="8" ry="3"/>'),
 };
 
+const PRESET_DEFS = {}; // id → preset (incl. params)
+let currentPresetId = null;
+let dimsTimer = null;
+
 async function loadPresets() {
   try {
     const res = await fetch("/api/presets");
@@ -26,6 +31,7 @@ async function loadPresets() {
     const wrap = $("presets");
     wrap.innerHTML = "";
     items.forEach((p) => {
+      PRESET_DEFS[p.id] = p;
       const cubic = p.mode === "cubic_tessellation";
       const cls = p.mode === "gradient" ? "gradient" : cubic ? "" : "uniform";
       const btn = document.createElement("button");
@@ -43,25 +49,53 @@ async function loadPresets() {
   } catch (e) { /* presets are optional */ }
 }
 
-async function loadPreset(id) {
-  status("Loading example…", "busy");
+async function loadPreset(id, values = null) {
+  status("Building example…", "busy");
   try {
-    const res = await fetch("/api/preset/" + id, { method: "POST" });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || "could not load preset");
-    }
-    const data = await res.json();
+    const data = await postJSON("/api/preset/" + id, { params: values });
     setModel(data);
     document.querySelectorAll(".preset").forEach((el) => el.classList.toggle("active", el.dataset.id === id));
     applyConfig(data.config);
     updateLatticeAvail();
+    if (id !== currentPresetId) renderDims(id, data.values); // rebuild only on preset switch (keep focus on edits)
+    currentPresetId = id;
     status("Loaded " + data.name);
     loadModel3D(data.id);
     requestPreview();
   } catch (e) {
     status(e.message, "error");
   }
+}
+
+// Editable mm dimensions for the active preset; editing regenerates the mesh.
+function renderDims(id, values) {
+  const def = PRESET_DEFS[id];
+  const wrap = $("dims");
+  wrap.innerHTML = "";
+  if (!def || !def.params || !def.params.length) { $("dims-card").hidden = true; return; }
+  def.params.forEach((param) => {
+    const label = document.createElement("label");
+    label.textContent = param.label;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0.1";
+    input.step = "0.5";
+    input.dataset.key = param.key;
+    input.value = (values && values[param.key] != null ? values[param.key] : param.default);
+    input.addEventListener("input", () => {
+      clearTimeout(dimsTimer);
+      dimsTimer = setTimeout(() => loadPreset(id, collectDims()), 250);
+    });
+    label.appendChild(input);
+    wrap.appendChild(label);
+  });
+  $("dims-card").hidden = false;
+}
+
+function collectDims() {
+  const out = {};
+  document.querySelectorAll("#dims input").forEach((i) => { out[i.dataset.key] = parseFloat(i.value); });
+  return out;
 }
 
 // ── Model metadata ───────────────────────────────────────
@@ -91,6 +125,8 @@ async function uploadFile(file) {
     const data = await res.json();
     setModel(data);
     document.querySelectorAll(".preset").forEach((el) => el.classList.remove("active"));
+    currentPresetId = null;
+    $("dims-card").hidden = true;
     status("Loaded " + data.name);
     loadModel3D(data.id);
     requestPreview();
