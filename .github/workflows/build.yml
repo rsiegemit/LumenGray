@@ -1,0 +1,80 @@
+name: Build desktop apps
+
+# Builds the double-click LumenGray desktop app for macOS and Windows.
+# Artifacts are uploaded on every run; tagged pushes (v*) also attach to a Release.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed for the release-attach step on tags
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[web]" pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm --distpath dist --workpath build packaging/LumenGray.spec
+
+      # --- macOS: zip the .app bundle (preserves the bundle structure) ---
+      - name: Package macOS .app
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent LumenGray.app LumenGray-macos.zip
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumenGray-macos
+          path: dist/LumenGray-macos.zip
+
+      # --- Windows: zip the one-folder build containing LumenGray.exe ---
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/LumenGray/* -DestinationPath dist/LumenGray-windows.zip -Force
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumenGray-windows
+          path: dist/LumenGray-windows.zip
+
+      # --- On tag pushes, attach the build to the GitHub Release ---
+      - name: Attach to Release (macOS)
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LumenGray-macos.zip
+
+      - name: Attach to Release (Windows)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LumenGray-windows.zip
