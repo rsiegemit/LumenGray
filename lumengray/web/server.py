@@ -247,33 +247,24 @@ def create_app() -> FastAPI:
         pixel_mm = config.printer.pixel_size_um / 1000.0
         layer_mm = config.printer.layer_height_um / 1000.0
 
-        count = max(1, min(req.max_layers, total))
-        rendered = []
-        for i0 in sample_indices(total, count):
-            idx = i0 + 1
-            solid = slice_index(mesh, config.printer, config.center_xy, idx)
-            rendered.append((idx, render_layer(solid, idx, total, config, regions, pixel_mm)))
-
-        # Union bounding box of cured pixels across the sampled layers (so the
-        # textured planes hug the model instead of the full empty canvas).
-        box = None
-        for _, layer in rendered:
-            ys, xs = np.where(layer > 0)
-            if xs.size:
-                b = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
-                box = b if box is None else [min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3])]
-        if box is None:
-            raise HTTPException(400, "Model produced only empty layers")
-        x0, y0, x1, y1 = box
+        x0, y0, x1, y1 = _footprint_box(mesh, config)
+        if x1 <= x0 or y1 <= y0:
+            raise HTTPException(400, "Model footprint is outside the build area")
         crop_w, crop_h = x1 - x0, y1 - y0
         scale = min(1.0, req.max_px / max(crop_w, crop_h))
         out_w, out_h = max(1, round(crop_w * scale)), max(1, round(crop_h * scale))
 
+        count = max(1, min(req.max_layers, total))
         layers = []
-        for idx, layer in rendered:
+        # Stream: render → crop → encode one layer at a time and let each full-res
+        # array be freed before the next. Holding all sampled layers at once is what
+        # OOMs small hosts (64 × 1920×1080 ≈ 130 MB).
+        for i0 in sample_indices(total, count):
+            idx = i0 + 1
+            layer = render_layer(slice_index(mesh, config.printer, config.center_xy, idx), idx, total, config, regions, pixel_mm)
             crop = layer[y0:y1, x0:x1]
-            # gray RGB; alpha = gray so background is transparent and the grey
-            # cores read as semi-transparent while white shells stay opaque.
+            # gray RGB; alpha = gray so background is transparent and grey cores
+            # read as semi-transparent while white shells stay opaque.
             rgba = np.dstack([crop, crop, crop, crop])
             img = Image.fromarray(rgba, "RGBA").resize((out_w, out_h), Image.NEAREST)
             buffer = io.BytesIO()
@@ -304,19 +295,12 @@ def create_app() -> FastAPI:
 
         pixel_mm = config.printer.pixel_size_um / 1000.0
         layer_mm = config.printer.layer_height_um / 1000.0
-        width, height = config.printer.resolution
+        height = config.printer.resolution[1]  # for the row→world-Y flip below
         origin = canvas_origin(mesh, config.printer, config.center_xy)
         regions = resolve_regions(config, origin)
 
-        # Model XY footprint in pixels (from mesh bounds) so we don't voxelize empty canvas.
-        (xmin, ymin) = mesh.bounds[0][:2]
-        (xmax, ymax) = mesh.bounds[1][:2]
-        to_col = lambda x: (x - origin[0]) / pixel_mm
-        to_row = lambda y: (height - 1) - (y - origin[1]) / pixel_mm
-        c0 = max(0, int(np.floor(to_col(xmin))))
-        c1 = min(width, int(np.ceil(to_col(xmax))) + 1)
-        r0 = max(0, int(np.floor(min(to_row(ymin), to_row(ymax)))))
-        r1 = min(height, int(np.ceil(max(to_row(ymin), to_row(ymax)))) + 1)
+        # Model XY footprint in pixels so we don't voxelize empty canvas.
+        c0, r0, c1, r1 = _footprint_box(mesh, config)
         if c1 <= c0 or r1 <= r0:
             raise HTTPException(400, "Model footprint is outside the build area")
         crop_w, crop_h = c1 - c0, r1 - r0
@@ -410,6 +394,23 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
+
+
+def _footprint_box(mesh, config) -> tuple[int, int, int, int]:
+    """Model XY footprint in output pixels (from mesh bounds) — used to crop the
+    canvas so we never allocate/scan the full empty build area."""
+    pixel_mm = config.printer.pixel_size_um / 1000.0
+    width, height = config.printer.resolution
+    origin = canvas_origin(mesh, config.printer, config.center_xy)
+    (xmin, ymin) = mesh.bounds[0][:2]
+    (xmax, ymax) = mesh.bounds[1][:2]
+    to_col = lambda x: (x - origin[0]) / pixel_mm
+    to_row = lambda y: (height - 1) - (y - origin[1]) / pixel_mm
+    x0 = max(0, int(np.floor(to_col(xmin))))
+    x1 = min(width, int(np.ceil(to_col(xmax))) + 1)
+    y0 = max(0, int(np.floor(min(to_row(ymin), to_row(ymax)))))
+    y1 = min(height, int(np.ceil(max(to_row(ymin), to_row(ymax)))) + 1)
+    return x0, y0, x1, y1
 
 
 def _manifest(summary: dict, source_name: str) -> str:
