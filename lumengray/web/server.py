@@ -83,6 +83,13 @@ def create_app() -> FastAPI:
     uploads: dict[str, Upload] = {}
     upload_dir = tempfile.mkdtemp(prefix="lumengray_uploads_")
 
+    @app.middleware("http")
+    async def _no_cache(request, call_next):
+        # Local tool: never let the browser serve stale UI assets.
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     def _get(upload_id: str) -> Upload:
         item = uploads.get(upload_id)
         if item is None:
