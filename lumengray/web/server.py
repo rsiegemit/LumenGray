@@ -9,8 +9,10 @@ HTTP and keeps uploaded meshes warm in memory for fast previews.
 from __future__ import annotations
 
 import base64
+import gc
 import io
 import os
+import shutil
 import tempfile
 import uuid
 import zipfile
@@ -19,8 +21,9 @@ from dataclasses import dataclass
 import numpy as np
 import trimesh
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from PIL import Image
 from pydantic import BaseModel
 
@@ -226,25 +229,37 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/export")
-    def export(req: ExportRequest) -> StreamingResponse:
+    def export(req: ExportRequest) -> FileResponse:
         item = _get(req.id)
         config = _config(req.config)
-        out_dir = tempfile.mkdtemp(prefix="lumengray_export_")
+        work_dir = tempfile.mkdtemp(prefix="lumengray_export_")
+        out_dir = os.path.join(work_dir, "layers")
+        os.makedirs(out_dir, exist_ok=True)
         try:
             summary = run(item.path, out_dir, config, name_prefix=req.prefix)
+            # Stream the zip to disk (not an in-memory BytesIO) and delete each
+            # PNG as it is archived so neither RAM nor disk holds the full stack
+            # twice — building the whole zip in memory is what OOMs small hosts.
+            zip_path = os.path.join(work_dir, "photostack.zip")
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                for filename in sorted(os.listdir(out_dir)):
+                    src = os.path.join(out_dir, filename)
+                    archive.write(src, filename)
+                    os.remove(src)
+                archive.writestr("manifest.json", _manifest(summary, item.name))
         except (ValueError, ConfigError) as error:
+            shutil.rmtree(work_dir, ignore_errors=True)
             raise HTTPException(400, str(error)) from error
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for filename in sorted(os.listdir(out_dir)):
-                archive.write(os.path.join(out_dir, filename), filename)
-            archive.writestr("manifest.json", _manifest(summary, item.name))
-        buffer.seek(0)
+        except BaseException:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise
+        gc.collect()
         stem = os.path.splitext(item.name)[0] or "photostack"
-        return StreamingResponse(
-            buffer,
+        return FileResponse(
+            zip_path,
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{stem}_lumengray.zip"'},
+            filename=f"{stem}_lumengray.zip",
+            background=BackgroundTask(shutil.rmtree, work_dir, ignore_errors=True),
         )
 
     @app.post("/api/stack")
@@ -288,6 +303,8 @@ def create_app() -> FastAPI:
                     "png": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode(),
                 }
             )
+            del layer, crop, rgba, img, buffer
+        gc.collect()
         return {
             "count": len(layers),
             "total_layers": total,
@@ -325,26 +342,31 @@ def create_app() -> FastAPI:
         fz = max(1, round(voxel_mm / layer_mm))
         ncx, ncy, nz = -(-crop_w // fxy), -(-crop_h // fxy), -(-total // fz)
 
-        out: list[list[float]] = []
+        sampler = _BoundedSampler(req.max_voxels)
         for kz in range(nz):
             idx = min(total, kz * fz + fz // 2 + 1)  # center layer of the slab → fills the height
             layer = render_layer(slice_index(mesh, config.printer, config.center_xy, idx), idx, total, config, regions, pixel_mm)
             crop = layer[r0:r1, c0:c1].astype(np.float32)
+            del layer
             padded = np.zeros((ncy * fxy, ncx * fxy), dtype=np.float32)
             padded[:crop_h, :crop_w] = crop
+            del crop
             blocks = padded.reshape(ncy, fxy, ncx, fxy)
             solid = blocks > 0
             count = solid.sum(axis=(1, 3))
             mean = np.where(count > 0, blocks.sum(axis=(1, 3)) / np.maximum(count, 1), 0)
+            del padded, blocks, solid
             z_mm = (kz * fz + fz / 2.0) * layer_mm
-            for cy, cx in zip(*np.where(count > 0)):
+            rows, cols = np.where(count > 0)
+            for cy, cx in zip(rows, cols):
                 x_mm = (c0 + cx * fxy + fxy / 2.0) * pixel_mm
                 y_mm = (height - 1 - (r0 + cy * fxy + fxy / 2.0)) * pixel_mm
-                out.append([round(float(x_mm), 3), round(float(y_mm), 3), round(float(z_mm), 3), int(mean[cy, cx])])
+                sampler.add([round(float(x_mm), 3), round(float(y_mm), 3), round(float(z_mm), 3), int(mean[cy, cx])])
+            del count, mean, rows, cols
 
-        truncated = len(out) > req.max_voxels
-        if truncated:
-            out = out[:: -(-len(out) // req.max_voxels)]
+        gc.collect()
+        truncated = sampler.total > req.max_voxels
+        out = sampler.result()
         return {
             "voxel_size_mm": [round(fxy * pixel_mm, 4), round(fxy * pixel_mm, 4), round(fz * layer_mm, 4)],
             "voxels": out,
@@ -370,8 +392,11 @@ def create_app() -> FastAPI:
         cube_xy, cube_z = t.cube_xy_px, t.cube_z_layers
         first, last = t.cap_bottom_layers + 1, total - t.cap_top_layers
 
-        cells: list[list[float]] = []
+        sampler = _BoundedSampler(req.max_cells)
         # One representative slice per Z-band gives that band's XY cube occupancy.
+        # Free the full-canvas boolean arrays each iteration and bound the kept
+        # cell sample so peak RAM stays flat — accumulating every cell (millions
+        # on a large model) before striking it down is what OOMs small hosts.
         band_start = first
         while band_start <= last:
             band_end = min(band_start + cube_z - 1, last)
@@ -383,20 +408,23 @@ def create_app() -> FastAPI:
             padded[:height, :width] = solid
             occupied = padded.reshape(ncy, cube_xy, ncx, cube_xy).any(axis=(1, 3))
             z_mm = ((band_start + band_end) / 2.0 - 0.5) * layer_mm
-            for cy, cx in zip(*np.where(occupied)):
+            rows, cols = np.where(occupied)
+            del solid, padded, occupied
+            for cy, cx in zip(rows, cols):
                 col_c = cx * cube_xy + cube_xy / 2.0
                 row_c = cy * cube_xy + cube_xy / 2.0
-                cells.append([
+                sampler.add([
                     round(float(col_c * pixel_mm), 4),
                     round(float((height - 1 - row_c) * pixel_mm), 4),
                     round(float(z_mm), 4),
                 ])
+            del rows, cols
             band_start += cube_z
 
-        total_cells = len(cells)
+        gc.collect()
+        total_cells = sampler.total
         truncated = total_cells > req.max_cells
-        if truncated:
-            cells = cells[:: -(-total_cells // req.max_cells)]
+        cells = sampler.result()
         return {
             "cube_size_mm": [round(cube_xy * pixel_mm, 4), round(cube_xy * pixel_mm, 4), round(cube_z * layer_mm, 4)],
             "cells": cells,
@@ -407,6 +435,35 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
+
+
+class _BoundedSampler:
+    """Collect rows while capping peak memory to ~2x ``limit``.
+
+    Holding every cell/voxel before striking it down to ``limit`` is what spikes
+    RAM on large models (millions of tiny lists). This keeps an evenly-strided
+    sample in bounded memory and the exact total count, matching the result of
+    striding the full list at the end.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.limit = max(1, limit)
+        self.total = 0
+        self.stride = 1
+        self.items: list = []
+
+    def add(self, row) -> None:
+        if self.total % self.stride == 0:
+            self.items.append(row)
+            if len(self.items) > 2 * self.limit:
+                self.items = self.items[::2]
+                self.stride *= 2
+        self.total += 1
+
+    def result(self) -> list:
+        if len(self.items) > self.limit:
+            return self.items[:: -(-len(self.items) // self.limit)]
+        return self.items
 
 
 def _footprint_box(mesh, config) -> tuple[int, int, int, int]:

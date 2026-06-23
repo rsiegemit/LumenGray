@@ -11,7 +11,7 @@ from .config import Config
 from .geometry import shape_to_pixels
 from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
-from .slicer import canvas_origin, load_mesh, orient_mesh, slice_mesh
+from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
 from .tessellation import tessellation_layer
 
 PREVIEW_FILENAME = "_preview.png"
@@ -30,8 +30,8 @@ def run(
     """Slice, modulate, and write the stack. Returns a summary dict."""
     mesh = load_mesh(stl_path)
     mesh = orient_mesh(mesh, config.rotation_deg)
-    solids = slice_mesh(mesh, config.printer, config.center_xy)
-    if not solids:
+    total = count_layers(mesh, config.printer)
+    if total == 0:
         raise ValueError("No layers produced; check layer height vs model Z extent")
 
     origin = canvas_origin(mesh, config.printer, config.center_xy)
@@ -39,19 +39,23 @@ def run(
     pixel_mm = config.printer.pixel_size_um / 1000.0
 
     os.makedirs(out_dir, exist_ok=True)
-    pad = max(4, len(str(len(solids))))
-    preview_at = set(sample_indices(len(solids), preview_tiles)) if preview else set()
+    pad = max(4, len(str(total)))
+    preview_at = set(sample_indices(total, preview_tiles)) if preview else set()
     thumbs: list[tuple] = []
 
-    for index, solid in enumerate(solids, start=1):
-        layer = render_layer(solid, index, len(solids), config, regions, pixel_mm)
+    # Slice + write one layer at a time so the full stack never lives in RAM at
+    # once (holding every full-res mask is what OOMs small hosts on big models).
+    for index in range(1, total + 1):
+        solid = slice_index(mesh, config.printer, config.center_xy, index)
+        layer = render_layer(solid, index, total, config, regions, pixel_mm)
         filename = f"{name_prefix}{index:0{pad}d}.png"
         Image.fromarray(layer, mode="L").save(os.path.join(out_dir, filename))
         if (index - 1) in preview_at:
             thumbs.append((index, make_thumbnail(layer, preview_thumb_w)))
+        del solid, layer
 
     summary = {
-        "layers": len(solids),
+        "layers": total,
         "resolution": config.printer.resolution,
         "layer_height_um": config.printer.layer_height_um,
         "pixel_size_um": config.printer.pixel_size_um,
