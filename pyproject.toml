@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumengray"
+version = "0.1.0"
+description = "STL → grayscale photostack studio for the Lumen X3 (CLI + web UI)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "rsiegemit" }]
+keywords = ["3d-printing", "resin", "photostack", "grayscale", "stl", "lumen", "slicer"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "pillow>=10.0",
+  "trimesh>=4.0",
+]
+
+[project.optional-dependencies]
+web = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+lumengray = "lumengray.cli:main"
+lumengray-web = "lumengray.web.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/rsiegemit/LumenGray"
+Repository = "https://github.com/rsiegemit/LumenGray"
+
+[tool.setuptools]
+packages = ["lumengray", "lumengray.web"]
+
+[tool.setuptools.package-data]
+"lumengray.web" = ["static/*"]

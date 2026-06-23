@@ -1,0 +1,22 @@
+{
+  "printer": {
+    "resolution": [1920, 1080],
+    "pixel_size_um": 35,
+    "layer_height_um": 50
+  },
+  "model": {
+    "center_xy": true
+  },
+  "grayscale": {
+    "cubic_tessellation": {
+      "cap_bottom_layers": 2,
+      "cap_top_layers": 2,
+      "cube_xy_px": 6,
+      "cube_z_layers": 6,
+      "shell_px": 1,
+      "boundary_um": 100,
+      "grey_value": 128,
+      "white_value": 255
+    }
+  }
+}

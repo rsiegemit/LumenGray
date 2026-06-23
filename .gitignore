@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Generated photostacks / archives
+out_*/
+photomasks/
+*.zip
+
+# Tooling state
+.omc/
+.idea/
+.vscode/

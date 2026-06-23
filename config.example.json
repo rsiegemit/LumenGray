@@ -1,0 +1,45 @@
+{
+  "printer": {
+    "resolution": [1920, 1080],
+    "pixel_size_um": 35,
+    "layer_height_um": 50
+  },
+  "model": {
+    "center_xy": true
+  },
+  "grayscale": {
+    "default_solid_value": 255,
+    "regions": [
+      {
+        "name": "dim-rect-lower-layers",
+        "layers": [1, 20],
+        "value": 128,
+        "shape": { "type": "rect", "x": 760, "y": 340, "w": 400, "h": 400 },
+        "clip_to_solid": true
+      },
+      {
+        "name": "soft-circle-all-layers",
+        "value": 80,
+        "shape": { "type": "circle", "cx": 960, "cy": 540, "r": 120 },
+        "clip_to_solid": true
+      },
+      {
+        "name": "polygon-top-layers",
+        "layers": [21, 9999],
+        "value": 180,
+        "shape": {
+          "type": "polygon",
+          "points": [[600, 300], [1320, 300], [960, 760]]
+        },
+        "clip_to_solid": true
+      },
+      {
+        "name": "mm-dot-model-space",
+        "value": 200,
+        "units": "mm",
+        "shape": { "type": "circle", "cx": -12, "cy": 6, "r": 2 },
+        "clip_to_solid": true
+      }
+    ]
+  }
+}

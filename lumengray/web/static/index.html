@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LumenGray — grayscale photostack studio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' rx='4' fill='%23f5a623'/&gt;&lt;rect x='3' y='3' width='4' height='4' fill='%23111'/&gt;&lt;rect x='9' y='9' width='4' height='4' fill='%23111'/&gt;&lt;/svg&gt;" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>LumenGray</h1>
+        <p>STL → grayscale photostack studio for the Lumen X3</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="ghost-btn" href="https://github.com/rsiegemit/LumenGray" target="_blank" rel="noopener">GitHub ↗</a>
+      <button id="export-btn" class="primary-btn" disabled>Export stack (.zip)</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ── Controls ─────────────────────────────────────────── -->
+    <aside class="panel controls" id="controls">
+      <section class="card" id="drop-card">
+        <h2>Model</h2>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file-input" accept=".stl" hidden />
+          <span class="dz-icon">⬆</span>
+          <span class="dz-text">Drop an <strong>.stl</strong> here<br />or click to browse</span>
+        </label>
+        <dl class="meta" id="model-meta" hidden>
+          <div><dt>File</dt><dd id="m-name">—</dd></div>
+          <div><dt>Size (mm)</dt><dd id="m-extents">—</dd></div>
+          <div><dt>Triangles</dt><dd id="m-tris">—</dd></div>
+          <div><dt>Watertight</dt><dd id="m-water">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <h2>Printer</h2>
+        <div class="grid2">
+          <label>Width (px)<input type="number" id="res-w" value="1920" min="1" step="1" /></label>
+          <label>Height (px)<input type="number" id="res-h" value="1080" min="1" step="1" /></label>
+          <label>Pixel size (µm)<input type="number" id="pixel-um" value="35" min="1" step="1" /></label>
+          <label>Layer height (µm)<input type="number" id="layer-um" value="50" min="1" step="1" /></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Orientation</h2>
+        <label class="checkrow"><input type="checkbox" id="center-xy" checked /> Center on build plate</label>
+        <div class="grid3">
+          <label>Rot X°<input type="number" id="rot-x" value="0" step="5" /></label>
+          <label>Rot Y°<input type="number" id="rot-y" value="0" step="5" /></label>
+          <label>Rot Z°<input type="number" id="rot-z" value="0" step="5" /></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Grayscale mode</h2>
+        <div class="segmented" id="mode-seg">
+          <button data-mode="uniform" class="active">Uniform</button>
+          <button data-mode="gradient">Gradient</button>
+          <button data-mode="cubic">Cubic tessellation</button>
+        </div>
+
+        <div class="mode-panel" data-panel="uniform">
+          <label class="slider">Solid value <output id="o-solid">255</output>
+            <input type="range" id="solid-value" min="0" max="255" value="255" />
+          </label>
+        </div>
+
+        <div class="mode-panel" data-panel="gradient" hidden>
+          <p class="hint">Edge-feather: dark at walls/holes, bright in the core.</p>
+          <label class="slider">Min (edge) <output id="o-gmin">40</output>
+            <input type="range" id="g-min" min="0" max="255" value="40" />
+          </label>
+          <label class="slider">Max (core) <output id="o-gmax">255</output>
+            <input type="range" id="g-max" min="0" max="255" value="255" />
+          </label>
+          <label>Falloff (mm)<input type="number" id="g-falloff" value="0.35" min="0.01" step="0.05" /></label>
+        </div>
+
+        <div class="mode-panel" data-panel="cubic" hidden>
+          <p class="hint">Hollow white cubes (shell) with grey cores, white caps + boundary rim.</p>
+          <div class="grid2">
+            <label>Bottom caps<input type="number" id="t-cap-b" value="2" min="0" step="1" /></label>
+            <label>Top caps<input type="number" id="t-cap-t" value="2" min="0" step="1" /></label>
+            <label>Cube XY (px)<input type="number" id="t-cube-xy" value="6" min="1" step="1" /></label>
+            <label>Cube Z (layers)<input type="number" id="t-cube-z" value="6" min="1" step="1" /></label>
+            <label>Shell (px)<input type="number" id="t-shell" value="1" min="1" step="1" /></label>
+            <label>Boundary (µm)<input type="number" id="t-boundary" value="100" min="0" step="5" /></label>
+          </div>
+          <label class="slider">Grey core <output id="o-grey">128</output>
+            <input type="range" id="t-grey" min="0" max="255" value="128" />
+          </label>
+          <label class="slider">White value <output id="o-white">255</output>
+            <input type="range" id="t-white" min="0" max="255" value="255" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <details>
+          <summary>Live config JSON</summary>
+          <pre class="json" id="config-json">{}</pre>
+          <div class="row">
+            <button class="ghost-btn" id="copy-config">Copy</button>
+            <button class="ghost-btn" id="download-config">Download .json</button>
+          </div>
+        </details>
+      </section>
+    </aside>
+
+    <!-- ── Viewers ─────────────────────────────────────────── -->
+    <section class="viewers">
+      <div class="viewer-tabs">
+        <button data-view="layers" class="active">Layer stack</button>
+        <button data-view="model">3D model</button>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="view view-layers" data-view="layers">
+          <div class="canvas-wrap">
+            <img id="layer-img" alt="layer preview" />
+            <div class="empty-state" id="layer-empty">Upload an STL to preview the photostack.</div>
+            <div class="spinner" id="layer-spin" hidden></div>
+          </div>
+          <div class="scrubber">
+            <button class="step" id="prev-layer" title="previous">◀</button>
+            <input type="range" id="layer-slider" min="1" max="1" value="1" disabled />
+            <button class="step" id="next-layer" title="next">▶</button>
+            <span class="layer-label" id="layer-label">— / —</span>
+          </div>
+        </div>
+
+        <div class="view view-model" data-view="model" hidden>
+          <div class="canvas-wrap" id="three-wrap">
+            <div class="empty-state" id="model-empty">Upload an STL to view it in 3D.</div>
+          </div>
+          <p class="hint center">Drag to orbit · scroll to zoom · right-drag to pan</p>
+        </div>
+      </div>
+
+      <div class="statusbar" id="statusbar">Ready.</div>
+    </section>
+  </main>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
