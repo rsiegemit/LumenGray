@@ -120,6 +120,107 @@ function syncSlider() {
   $("layer-label").textContent = `${state.index} / ${state.total}`;
 }
 
+// ── Presets ──────────────────────────────────────────────
+const SHAPE_ICONS = {
+  prism: svg('<rect x="5" y="3" width="11" height="18" rx="1"/><path d="M16 3l4 3v12l-4 3M5 3l4 3v12l-4 3M9 6h11"/>'),
+  cube: svg('<path d="M4 8l8-4 8 4-8 4z"/><path d="M4 8v8l8 4 8-4V8M12 12v8"/>'),
+  cylinder: svg('<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v14a7 3 0 0 0 14 0V5"/>'),
+  sphere: svg('<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4a12 6 0 0 0 0 16a12 6 0 0 0 0-16"/>'),
+  torus: svg('<ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="3.5" ry="1.8"/>'),
+  cone: svg('<path d="M12 3l8 15H4z"/><ellipse cx="12" cy="18" rx="8" ry="3"/>'),
+};
+function svg(inner) {
+  return `<svg class="p-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${inner}</svg>`;
+}
+
+async function loadPresets() {
+  try {
+    const res = await fetch("/api/presets");
+    if (!res.ok) return;
+    const items = await res.json();
+    const wrap = $("presets");
+    wrap.innerHTML = "";
+    items.forEach((p) => {
+      const cubic = p.mode === "cubic_tessellation";
+      const cls = p.mode === "gradient" ? "gradient" : cubic ? "" : "uniform";
+      const btn = document.createElement("button");
+      btn.className = "preset";
+      btn.dataset.id = p.id;
+      btn.title = p.description;
+      btn.innerHTML =
+        (SHAPE_ICONS[p.id] || "") +
+        `<span class="p-name">${p.name}</span>` +
+        `<span class="p-dims">${p.extents_mm.join(" × ")} mm</span>` +
+        `<span class="badge ${cls}">${cubic ? "cubic" : p.mode}</span>`;
+      btn.addEventListener("click", () => loadPreset(p.id));
+      wrap.appendChild(btn);
+    });
+  } catch (e) { /* presets are optional */ }
+}
+
+async function loadPreset(id) {
+  status("Loading example…", "busy");
+  try {
+    const res = await fetch("/api/preset/" + id, { method: "POST" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "could not load preset");
+    }
+    const data = await res.json();
+    setModel(data);
+    document.querySelectorAll(".preset").forEach((el) => el.classList.toggle("active", el.dataset.id === id));
+    applyConfig(data.config);
+    status("Loaded " + data.name);
+    loadModel3D(data.id);
+    requestPreview();
+  } catch (e) {
+    status(e.message, "error");
+  }
+}
+
+// ── Apply a config object back into the controls ─────────
+function selectMode(mode) {
+  document.querySelectorAll("#mode-seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+  document.querySelectorAll(".mode-panel").forEach((p) => { p.hidden = p.dataset.panel !== mode; });
+}
+const setVal = (id, v) => { if (v !== undefined && v !== null) $(id).value = v; };
+
+function applyConfig(c) {
+  const p = c.printer || {}, m = c.model || {}, g = c.grayscale || {};
+  if (p.resolution) { setVal("res-w", p.resolution[0]); setVal("res-h", p.resolution[1]); }
+  setVal("pixel-um", p.pixel_size_um);
+  setVal("layer-um", p.layer_height_um);
+  if (typeof m.center_xy === "boolean") $("center-xy").checked = m.center_xy;
+  if (m.rotation_deg) { setVal("rot-x", m.rotation_deg[0]); setVal("rot-y", m.rotation_deg[1]); setVal("rot-z", m.rotation_deg[2]); }
+  if (g.cubic_tessellation) {
+    const t = g.cubic_tessellation;
+    setVal("t-cap-b", t.cap_bottom_layers); setVal("t-cap-t", t.cap_top_layers);
+    setVal("t-cube-xy", t.cube_xy_px); setVal("t-cube-z", t.cube_z_layers); setVal("t-shell", t.shell_px);
+    setVal("t-boundary", t.boundary_um); setVal("t-grey", t.grey_value); setVal("t-white", t.white_value);
+    selectMode("cubic");
+  } else if (g.gradient) {
+    setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);
+    selectMode("gradient");
+  } else {
+    setVal("solid-value", g.default_solid_value);
+    selectMode("uniform");
+  }
+  updateOutputs();
+  refreshConfigJson();
+}
+
+function setModel(data) {
+  state.id = data.id;
+  state.index = 1;
+  $("m-name").textContent = data.name;
+  $("m-extents").textContent = data.extents_mm.map((v) => v.toFixed(2)).join(" × ");
+  $("m-tris").textContent = data.triangles.toLocaleString();
+  $("m-water").textContent = data.watertight ? "yes" : "no — fills may be off";
+  $("m-water").style.color = data.watertight ? "var(--good)" : "var(--bad)";
+  $("model-meta").hidden = false;
+  $("export-btn").disabled = false;
+}
+
 // ── Upload ───────────────────────────────────────────────
 async function uploadFile(file) {
   if (!file) return;
@@ -133,15 +234,8 @@ async function uploadFile(file) {
       throw new Error(err.detail || "upload failed");
     }
     const data = await res.json();
-    state.id = data.id;
-    state.index = 1;
-    $("m-name").textContent = data.name;
-    $("m-extents").textContent = data.extents_mm.map((v) => v.toFixed(2)).join(" × ");
-    $("m-tris").textContent = data.triangles.toLocaleString();
-    $("m-water").textContent = data.watertight ? "yes" : "no — fills may be off";
-    $("m-water").style.color = data.watertight ? "var(--good)" : "var(--bad)";
-    $("model-meta").hidden = false;
-    $("export-btn").disabled = false;
+    setModel(data);
+    document.querySelectorAll(".preset").forEach((el) => el.classList.remove("active"));
     status("Loaded " + data.name);
     loadModel3D(data.id);
     requestPreview();
@@ -288,11 +382,7 @@ function wire() {
 
   // mode segmented
   document.querySelectorAll("#mode-seg button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#mode-seg button").forEach((b) => b.classList.toggle("active", b === btn));
-      document.querySelectorAll(".mode-panel").forEach((p) => { p.hidden = p.dataset.panel !== btn.dataset.mode; });
-      schedulePreview();
-    });
+    btn.addEventListener("click", () => { selectMode(btn.dataset.mode); schedulePreview(); });
   });
 
   // viewer tabs
@@ -315,6 +405,7 @@ function wire() {
 
   updateOutputs();
   refreshConfigJson();
+  loadPresets();
 }
 
 // keep slider <output> labels in sync

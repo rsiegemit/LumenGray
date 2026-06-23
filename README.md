@@ -14,6 +14,8 @@ stack update live.
 
 ## Highlights
 
+- **One-click examples** — six built-in models (prism, cube, cylinder, sphere, torus, cone),
+  each pre-loaded with showcase parameters for a different grayscale mode.
 - **Drag-and-drop any STL** — slices to a registered, fixed-canvas photostack.
 - **Three grayscale modes**
   - **Uniform** — flat exposure for every cured pixel.
@@ -41,9 +43,12 @@ lumengray-web               # opens http://127.0.0.1:8000 in your browser
 # or: python -m lumengray.web
 ```
 
-Upload an STL, pick a grayscale mode, drag the sliders, and the **Layer stack** preview
-re-slices live. Switch to **3D model** to orbit the mesh. Hit **Export stack (.zip)** for
-the full set of PNG masks plus a `manifest.json`.
+Upload an STL — or click an **Example** to load a built-in model with showcase parameters —
+pick a grayscale mode, drag the sliders, and the **Layer stack** preview re-slices live.
+Switch to **3D model** to orbit the mesh. Hit **Export stack (.zip)** for the full set of
+PNG masks plus a `manifest.json`.
+
+![Built-in examples](docs/screenshot-presets.png)
 
 ## The CLI
 

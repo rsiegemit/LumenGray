@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from ..config import ConfigError, config_from_dict
 from ..pipeline import render_layer, resolve_regions, run
 from ..slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
+from .presets import PRESETS, build_preset_mesh, get_preset, mode_of
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
@@ -75,6 +76,20 @@ def create_app() -> FastAPI:
         # orient_mesh mutates in place, so always work on a copy of the cached mesh.
         return orient_mesh(item.mesh.copy(), config.rotation_deg)
 
+    def _register(mesh: trimesh.Trimesh, name: str) -> dict:
+        upload_id = uuid.uuid4().hex
+        path = os.path.join(upload_dir, f"{upload_id}.stl")
+        mesh.export(path)
+        uploads[upload_id] = Upload(path=path, name=name, mesh=mesh)
+        extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
+        return {
+            "id": upload_id,
+            "name": name,
+            "extents_mm": [round(v, 3) for v in extents],
+            "watertight": bool(mesh.is_watertight),
+            "triangles": int(len(mesh.faces)),
+        }
+
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(os.path.join(STATIC_DIR, "index.html"))
@@ -86,24 +101,43 @@ def create_app() -> FastAPI:
             raise HTTPException(400, "Empty file")
         if len(data) > MAX_UPLOAD_BYTES:
             raise HTTPException(413, "File too large (limit 100 MB)")
-        upload_id = uuid.uuid4().hex
-        path = os.path.join(upload_dir, f"{upload_id}.stl")
-        with open(path, "wb") as handle:
+        tmp = os.path.join(upload_dir, f"{uuid.uuid4().hex}.upload.stl")
+        with open(tmp, "wb") as handle:
             handle.write(data)
         try:
-            mesh = load_mesh(path)
+            mesh = load_mesh(tmp)
         except Exception as error:  # noqa: BLE001 - surface any STL load failure as 400
-            os.remove(path)
             raise HTTPException(400, f"Could not read STL: {error}") from error
-        uploads[upload_id] = Upload(path=path, name=file.filename or "model.stl", mesh=mesh)
-        extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
-        return {
-            "id": upload_id,
-            "name": file.filename,
-            "extents_mm": [round(v, 3) for v in extents],
-            "watertight": bool(mesh.is_watertight),
-            "triangles": int(len(mesh.faces)),
-        }
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        return _register(mesh, file.filename or "model.stl")
+
+    @app.get("/api/presets")
+    def presets() -> list[dict]:
+        out = []
+        for preset in PRESETS:
+            mesh = build_preset_mesh(preset["id"])
+            extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
+            out.append(
+                {
+                    "id": preset["id"],
+                    "name": preset["name"],
+                    "description": preset["description"],
+                    "extents_mm": [round(v, 1) for v in extents],
+                    "mode": mode_of(preset["config"]),
+                }
+            )
+        return out
+
+    @app.post("/api/preset/{preset_id}")
+    def load_preset(preset_id: str) -> dict:
+        preset = get_preset(preset_id)
+        if preset is None:
+            raise HTTPException(404, "Unknown preset")
+        result = _register(build_preset_mesh(preset_id), f"{preset['name']}.stl")
+        result["config"] = preset["config"]
+        return result
 
     @app.get("/api/model/{upload_id}")
     def model(upload_id: str) -> FileResponse:

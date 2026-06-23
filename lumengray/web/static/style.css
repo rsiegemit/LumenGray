@@ -117,6 +117,26 @@ input[type=range]:disabled { opacity: .4; }
 .row { display: flex; gap: 8px; margin-top: 8px; }
 details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 
+/* ── Presets ─────────────────────────────────────────── */
+.presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.preset {
+  text-align: left; background: var(--card-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px; cursor: pointer; transition: border-color .15s, transform .1s;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.preset:hover { border-color: var(--accent); transform: translateY(-1px); }
+.preset:active { transform: none; }
+.preset.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.preset .p-icon { width: 26px; height: 26px; color: var(--accent); }
+.preset .p-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.preset .p-dims { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.badge {
+  align-self: flex-start; font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px;
+  padding: 2px 6px; border-radius: 5px; background: #f5a62322; color: var(--accent); margin-top: 2px;
+}
+.badge.gradient { background: #46c46e22; color: var(--good); }
+.badge.uniform { background: #ffffff14; color: var(--muted); }
+
 /* ── Viewers ─────────────────────────────────────────── */
 .viewers { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .viewer-tabs { display: flex; gap: 4px; padding: 10px 14px 0; }
