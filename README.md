@@ -36,7 +36,20 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[web]"     # core + web UI; drop [web] for just the CLI/library
 ```
 
-## The web studio
+## Run it in the cloud (share with anyone — no install)
+
+Host LumenGray once and everyone just opens a **URL** — any OS, no Python, no
+download. Every push to GitHub auto-redeploys the latest code.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rsiegemit/LumenGray)
+
+Click the button → sign in to Render → **Apply**. In ~2 minutes you get a public
+URL (e.g. `https://lumengray.onrender.com`) running this repo, redeploying on
+every push (`render.yaml`). A `Dockerfile` is included for Fly.io / Hugging Face
+Spaces / Railway / Cloud Run too. (Render's free tier sleeps when idle and wakes
+on the next visit; the first hit after a nap takes a few seconds.)
+
+## The web studio (run locally)
 
 ```bash
 lumengray-web               # opens http://127.0.0.1:8000 in your browser
