@@ -14,7 +14,7 @@
       "cube_xy_px": 6,
       "cube_z_layers": 6,
       "shell_px": 1,
-      "boundary_um": 100,
+      "boundary_px": 3,
       "grey_value": 128,
       "white_value": 255
     }

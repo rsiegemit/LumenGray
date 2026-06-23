@@ -21,14 +21,14 @@ UNIT_TYPES = ("px", "mm")
 GRADIENT_TYPES = ("edge_feather",)
 DEFAULT_FALLOFF_MM = 0.35
 
-# Cubic-tessellation defaults (everything in voxel counts; boundary in microns).
+# Cubic-tessellation defaults (everything in voxel counts).
 DEFAULT_TESSELLATION = {
     "cap_bottom_layers": 2,
     "cap_top_layers": 2,
     "cube_xy_px": 6,
     "cube_z_layers": 6,
     "shell_px": 1,
-    "boundary_um": 100.0,
+    "boundary_px": 3,
     "grey_value": 128,
     "white_value": 255,
 }
@@ -77,7 +77,7 @@ class CubicTessellation:
     cube_xy_px: int  # cube edge in XY pixels
     cube_z_layers: int  # cube edge in Z layers
     shell_px: int  # white shell thickness (voxels) on every face; core = cube - 2*shell
-    boundary_um: float  # per-layer white rim: solid within this L-inf distance of an edge
+    boundary_px: int  # per-layer white rim: solid within this many px (L-inf) of an edge
     grey_value: int  # fill for the hollow cube core
     white_value: int  # fill for shells, rim, and caps
 
@@ -208,10 +208,7 @@ def _build_tessellation(raw) -> CubicTessellation | None:
             "grayscale.cubic_tessellation.shell_px too large: leaves no grey core "
             "(need 2*shell_px < cube_xy_px and < cube_z_layers)"
         )
-    boundary = _positive_number(
-        raw.get("boundary_um", DEFAULT_TESSELLATION["boundary_um"]),
-        "grayscale.cubic_tessellation.boundary_um",
-    )
+    boundary = _int("boundary_px", 0)
     grey = _validate_value(
         raw.get("grey_value", DEFAULT_TESSELLATION["grey_value"]),
         "grayscale.cubic_tessellation.grey_value",
@@ -226,7 +223,7 @@ def _build_tessellation(raw) -> CubicTessellation | None:
         cube_xy_px=cube_xy,
         cube_z_layers=cube_z,
         shell_px=shell,
-        boundary_um=boundary,
+        boundary_px=boundary,
         grey_value=grey,
         white_value=white,
     )

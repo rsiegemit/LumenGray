@@ -24,7 +24,7 @@ def _cubic(**overrides) -> dict:
         "cube_xy_px": 6,
         "cube_z_layers": 6,
         "shell_px": 1,
-        "boundary_um": 100,
+        "boundary_px": 3,
         "grey_value": 128,
         "white_value": 255,
     }
@@ -55,7 +55,7 @@ PRESETS = [
         "name": "Cube",
         "description": "8 mm cube — larger 8-voxel hollow cubes",
         "build": lambda: trimesh.creation.box(extents=[8.0, 8.0, 8.0]),
-        "config": _cubic(cube_xy_px=8, cube_z_layers=8, grey_value=100, boundary_um=140),
+        "config": _cubic(cube_xy_px=8, cube_z_layers=8, grey_value=100, boundary_px=4),
     },
     {
         "id": "cylinder",

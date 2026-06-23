@@ -100,14 +100,14 @@
         </div>
 
         <div class="mode-panel" data-panel="cubic" hidden>
-          <p class="hint">Hollow white cubes (shell) with grey cores, white caps + boundary rim.</p>
+          <p class="hint">White cube-edge support columns with grey faces/core, white caps + boundary rim.</p>
           <div class="grid2">
             <label>Bottom caps<input type="number" id="t-cap-b" value="2" min="0" step="1" /></label>
             <label>Top caps<input type="number" id="t-cap-t" value="2" min="0" step="1" /></label>
             <label>Cube XY (px)<input type="number" id="t-cube-xy" value="6" min="1" step="1" /></label>
             <label>Cube Z (layers)<input type="number" id="t-cube-z" value="6" min="1" step="1" /></label>
             <label>Shell (px)<input type="number" id="t-shell" value="1" min="1" step="1" /></label>
-            <label>Boundary (µm)<input type="number" id="t-boundary" value="100" min="0" step="5" /></label>
+            <label>Boundary (px)<input type="number" id="t-boundary" value="3" min="0" step="1" /></label>
           </div>
           <label class="slider">Grey core <output id="o-grey">128</output>
             <input type="range" id="t-grey" min="0" max="255" value="128" />

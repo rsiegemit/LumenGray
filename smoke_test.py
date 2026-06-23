@@ -97,7 +97,7 @@ def main():
     rimg = np.array(Image.open(os.path.join(out_rot, sorted(os.listdir(out_rot))[300])))
     assert rimg.shape == (1080, 1920), rimg.shape
 
-    # --- cubic tessellation: white caps, hollow-cube infill, white boundary rim ---
+    # --- cubic tessellation: white caps, edge-strut infill, white boundary rim ---
     from dataclasses import replace as _replace
 
     # 7x10x4mm prism -> 4mm/50um = 80 layers (2 bottom caps + 76 middle + 2 top caps).
@@ -117,11 +117,11 @@ def main():
     for i in (1, 2, 79, 80):
         vals = set(np.unique(tlayer(i)).tolist())
         assert vals.issubset({0, 255}) and 255 in vals, (i, vals)
-    # an interior layer carries grey cores; a cube-face layer (z_in_cube=0) does not.
+    # interior + cube-face layers both carry grey now (faces are open frames, not walls).
     assert set(np.unique(tlayer(5)).tolist()) == {0, 128, 255}, np.unique(tlayer(5))
-    assert set(np.unique(tlayer(3)).tolist()) == {0, 255}, np.unique(tlayer(3))
+    assert set(np.unique(tlayer(3)).tolist()) == {0, 128, 255}, np.unique(tlayer(3))
 
-    # layer 5 reproduces the exact hollow-cube + boundary-rim prediction.
+    # layer 5 reproduces the exact edge-strut + boundary-rim prediction.
     from scipy import ndimage as _ndi
 
     L = tlayer(5)
@@ -133,21 +133,25 @@ def main():
     row_s = (np.arange(H) % tess.cube_xy_px < tess.shell_px) | (
         np.arange(H) % tess.cube_xy_px >= tess.cube_xy_px - tess.shell_px
     )
-    shell_t = col_s[None, :] | row_s[:, None]
+    # layer 5: z_in_cube=(5-1-2)%6=2 → not a z-face → strut where col-edge AND row-edge.
+    strut_t = col_s[None, :] & row_s[:, None]
     pred = np.zeros_like(L)
-    pred[solid_t] = np.where(shell_t[solid_t], 255, 128)
-    bpx = round(tess.boundary_um / 35.0)
+    pred[solid_t] = np.where(strut_t[solid_t], 255, 128)
+    bpx = tess.boundary_px
     rim_t = solid_t & (_ndi.distance_transform_cdt(solid_t, metric="chessboard") <= bpx)
     pred[rim_t] = 255
     assert np.array_equal(pred, L), f"{int((pred != L).sum())} px differ from prediction"
 
-    # Z hollow cube: a core pixel is white on the cube faces, grey for 4 layers between.
-    cy, cx = [a[len(a) // 2] for a in np.where(L == 128)]
-    column = [int(tlayer(i)[cy, cx]) for i in range(3, 9)]  # one cube row (z 0..5)
-    assert column[0] == 255 and column[5] == 255 and all(c == 128 for c in column[1:5]), column
+    # struts run continuously up/down; true cores stay grey through every interior layer.
+    strut_px = np.argwhere(strut_t & solid_t & ~rim_t)[0]
+    core_px = np.argwhere((~col_s[None, :]) & (~row_s[:, None]) & solid_t & ~rim_t)[0]
+    strut_col = [int(tlayer(i)[strut_px[0], strut_px[1]]) for i in range(3, 9)]
+    core_col = [int(tlayer(i)[core_px[0], core_px[1]]) for i in range(3, 9)]
+    assert all(v == 255 for v in strut_col), strut_col
+    assert all(v == 128 for v in core_col), core_col
 
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
-    print("cubic tessellation:", tsum["layers"], "layers | caps+hollow-cubes+rim verified | Z-core", column)
+    print("cubic tessellation:", tsum["layers"], "layers | caps+edge-struts+rim verified | strut", strut_col, "core", core_col)
     print("sample output:", out_gray)
 
 

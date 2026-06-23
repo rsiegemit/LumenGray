@@ -20,7 +20,7 @@ stack update live.
 - **Three grayscale modes**
   - **Uniform** — flat exposure for every cured pixel.
   - **Edge-feather gradient** — gray ramps from walls/holes into the core by distance.
-  - **Cubic tessellation** — a 3D infill of hollow white cubes (white shell, grey core)
+  - **Cubic tessellation** — a 3D infill of white cube-edge support columns (grey faces/core)
     with solid-white caps and a per-layer white boundary rim.
 - **Live web studio** — upload, scrub the layer stack, orbit the model in 3D, export.
 - **Reproducible** — every run is fully described by one JSON config you can save and share.
@@ -65,7 +65,7 @@ The **3D model** tab has four views you can orbit:
 - **Mesh** — the input STL.
 - **Photostack** — the literal rendered layers stacked as thin slices.
 - **Volume** — a gap-free voxel solid at full height (each voxel tiles its layer slab), shaded by exposure.
-- **Lattice** — the hollow-cube cage as a wireframe (cubic-tessellation mode only).
+- **Lattice** — the cube-edge support cage as a wireframe (cubic-tessellation mode only).
 
 ![Built-in examples](docs/screenshot-presets.png)
 ![3D volume view](docs/screenshot-volume.png)
@@ -118,7 +118,7 @@ print(summary["layers"], "masks written")
     "cubic_tessellation": {                      // OR the hollow-cube infill (overrides the above)
       "cap_bottom_layers": 2, "cap_top_layers": 2,
       "cube_xy_px": 6, "cube_z_layers": 6, "shell_px": 1,
-      "boundary_um": 100, "grey_value": 128, "white_value": 255
+      "boundary_px": 3, "grey_value": 128, "white_value": 255
     }
   }
 }
@@ -126,17 +126,17 @@ print(summary["layers"], "masks written")
 
 ### Cubic tessellation, in detail
 
-The model interior is filled with a lattice of **hollow cubes**: a 1-voxel white shell
-around a grey core. The stack is capped with solid-white layers top and bottom, and every
-interior layer gets a pure-white boundary rim (within `boundary_um`, measured in the L∞ /
-chessboard metric) so walls stay fully cured.
+The model interior is tiled with cubes whose **edges** are white (`shell_px`-thick) —
+vertical support columns plus top/bottom frames — while the cube faces and core stay grey.
+The stack is capped with solid-white layers top and bottom, and every interior layer gets a
+pure-white boundary rim (solid pixels within `boundary_px` of an edge, L∞ / chessboard).
 
 Everything is reasoned about in **voxels** — one voxel is an output pixel in XY and one
 photostack layer in Z. With the Lumen X3's 35µm XY pixels and 50µm layers the voxels (and
 therefore the cubes) are deliberately *approximate*: a default 6-voxel cube is
-210 × 210 × 300 µm. Pixel/voxel counts are the source of truth; only `boundary_um` is
-specified physically. The lattice is anchored to the canvas in XY and to the first interior
-layer in Z, so cubes stack into true hollow boxes across the whole stack.
+210 × 210 × 300 µm. Pixel/voxel counts are the source of truth. The lattice is anchored to
+the canvas in XY and to the first interior layer in Z, so the struts stack into continuous
+columns across the whole stack.
 
 ---
 
@@ -154,7 +154,7 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 |--------|------|
 | `slicer.py` | STL → registered binary layer masks (fixed world-space canvas) |
 | `grayscale.py` | uniform / gradient base fill + region overlay |
-| `tessellation.py` | hollow-cube 3D infill mode |
+| `tessellation.py` | cube-edge support-column 3D infill mode |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config (frozen dataclasses) |
 | `pipeline.py` | end-to-end run + the shared single-layer renderer |

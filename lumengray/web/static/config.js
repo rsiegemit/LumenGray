@@ -40,7 +40,7 @@ export function buildConfig() {
       cube_xy_px: int("t-cube-xy", 6),
       cube_z_layers: int("t-cube-z", 6),
       shell_px: int("t-shell", 1),
-      boundary_um: num("t-boundary", 100),
+      boundary_px: int("t-boundary", 3),
       grey_value: int("t-grey", 128),
       white_value: int("t-white", 255),
     };
@@ -68,7 +68,7 @@ export function applyConfig(c) {
     const t = g.cubic_tessellation;
     setVal("t-cap-b", t.cap_bottom_layers); setVal("t-cap-t", t.cap_top_layers);
     setVal("t-cube-xy", t.cube_xy_px); setVal("t-cube-z", t.cube_z_layers); setVal("t-shell", t.shell_px);
-    setVal("t-boundary", t.boundary_um); setVal("t-grey", t.grey_value); setVal("t-white", t.white_value);
+    setVal("t-boundary", t.boundary_px); setVal("t-grey", t.grey_value); setVal("t-white", t.white_value);
     selectMode("cubic");
   } else if (g.gradient) {
     setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);

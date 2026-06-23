@@ -70,9 +70,7 @@ def run(
 def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     """Build one uint8 grayscale layer. Shared by the full run and the live preview."""
     if config.tessellation is not None:
-        return tessellation_layer(
-            solid, index, total_layers, config.tessellation, config.printer.pixel_size_um
-        )
+        return tessellation_layer(solid, index, total_layers, config.tessellation)
     layer = base_layer(solid, config.gradient, config.default_solid_value, pixel_mm)
     return overlay_regions(layer, solid, index, regions)
 
