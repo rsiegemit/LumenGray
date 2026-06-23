@@ -45,10 +45,17 @@ lumengray-web               # opens http://127.0.0.1:8000 in your browser
 
 Upload an STL — or click an **Example** to load a built-in model with showcase parameters —
 pick a grayscale mode, drag the sliders, and the **Layer stack** preview re-slices live.
-Switch to **3D model** to orbit the mesh. Hit **Export stack (.zip)** for the full set of
-PNG masks plus a `manifest.json`.
+Hit **Export stack (.zip)** for the full set of PNG masks plus a `manifest.json`.
+
+The **3D model** tab has four views you can orbit:
+
+- **Mesh** — the input STL.
+- **Photostack** — the literal rendered layers stacked as thin slices.
+- **Volume** — a gap-free voxel solid at full height (each voxel tiles its layer slab), shaded by exposure.
+- **Lattice** — the hollow-cube cage as a wireframe (cubic-tessellation mode only).
 
 ![Built-in examples](docs/screenshot-presets.png)
+![3D volume view](docs/screenshot-volume.png)
 
 ## The CLI
 

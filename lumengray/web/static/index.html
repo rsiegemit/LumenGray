@@ -153,10 +153,19 @@
         </div>
 
         <div class="view view-model" data-view="model" hidden>
+          <div class="three-toolbar">
+            <div class="segmented small" id="three-mode">
+              <button data-tmode="mesh" class="active">Mesh</button>
+              <button data-tmode="stack">Photostack</button>
+              <button data-tmode="volume">Volume</button>
+              <button data-tmode="lattice">Lattice</button>
+            </div>
+            <span class="hint" id="three-hint">Drag to orbit · scroll to zoom · right-drag to pan</span>
+          </div>
           <div class="canvas-wrap" id="three-wrap">
             <div class="empty-state" id="model-empty">Upload an STL to view it in 3D.</div>
+            <div class="spinner" id="three-spin" hidden></div>
           </div>
-          <p class="hint center">Drag to orbit · scroll to zoom · right-drag to pan</p>
         </div>
       </div>
 

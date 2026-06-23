@@ -270,15 +270,17 @@ function initThree() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x11141a);
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+  camera.up.set(0, 0, 1); // Z is print height → up
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   scene.add(new THREE.HemisphereLight(0xffffff, 0x223044, 1.1));
   const key = new THREE.DirectionalLight(0xffffff, 1.4);
-  key.position.set(1, 1.5, 1);
+  key.position.set(1, -1.2, 1.6);
   scene.add(key);
   const grid = new THREE.GridHelper(200, 20, 0x2a323d, 0x1c2229);
+  grid.rotation.x = Math.PI / 2; // lay the grid in the XY (build-plate) plane
   scene.add(grid);
-  three = { renderer, scene, camera, controls, grid, mesh: null };
+  three = { renderer, scene, camera, controls, grid, mesh: null, stack: null, stackKey: null, mode: "mesh", meshRadius: 10, meshBottom: 0 };
 
   function resize() {
     const w = wrap.clientWidth, h = wrap.clientHeight;
@@ -296,6 +298,16 @@ function initThree() {
   })();
 }
 
+function frame(radius) {
+  const r = radius || 10;
+  three.camera.near = r / 100;
+  three.camera.far = r * 100;
+  three.camera.position.set(r * 1.9, -r * 2.3, r * 1.5);
+  three.camera.updateProjectionMatrix();
+  three.controls.target.set(0, 0, 0);
+  three.controls.update();
+}
+
 async function loadModel3D(id) {
   if (!(await loadThreeLibs())) return;
   const fail = (msg) => { $("model-empty").textContent = msg; $("model-empty").hidden = false; };
@@ -306,26 +318,161 @@ async function loadModel3D(id) {
     return;
   }
   $("model-empty").hidden = true;
+  disposeStack(); // the model changed; any previous stack is stale
   new STLLoader().load(
     "/api/model/" + id,
     (geometry) => {
-      if (three.mesh) three.scene.remove(three.mesh);
+      if (three.mesh) { three.scene.remove(three.mesh); three.mesh.geometry.dispose(); three.mesh.material.dispose(); }
       geometry.computeVertexNormals();
       geometry.center();
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
       const material = new THREE.MeshStandardMaterial({ color: 0xf5a623, metalness: 0.1, roughness: 0.6 });
       const mesh = new THREE.Mesh(geometry, material);
       three.scene.add(mesh);
       three.mesh = mesh;
-      geometry.computeBoundingSphere();
-      const r = geometry.boundingSphere.radius || 10;
-      three.camera.position.set(r * 1.8, r * 1.4, r * 1.8);
-      three.controls.target.set(0, 0, 0);
-      three.grid.position.y = -r;
-      three.controls.update();
+      three.meshRadius = geometry.boundingSphere.radius || 10;
+      three.meshBottom = geometry.boundingBox.min.z;
+      if (three.mode === "mesh") {
+        mesh.visible = true;
+        three.grid.position.z = three.meshBottom;
+        frame(three.meshRadius);
+      } else {
+        mesh.visible = false;
+        buildView(three.mode);
+      }
     },
     undefined,
     () => fail("Could not load the model geometry."),
   );
+}
+
+function disposeStack() {
+  if (!three || !three.stack) return;
+  three.stack.traverse((o) => {
+    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    if (o.geometry) o.geometry.dispose();
+  });
+  three.scene.remove(three.stack);
+  three.stack = null;
+  three.stackKey = null;
+}
+
+async function postJSON(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "request failed");
+  }
+  return res.json();
+}
+
+// Photostack: the literal layer images stacked as thin textured slices.
+async function makeSlices() {
+  const data = await postJSON("/api/stack", { id: state.id, config: buildConfig() });
+  const group = new THREE.Group();
+  const loader = new THREE.TextureLoader();
+  const h = data.height_mm;
+  data.layers.forEach((L) => {
+    const tex = loader.load(L.png);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.NearestFilter;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(data.plane_w_mm, data.plane_h_mm), mat);
+    plane.position.z = L.z_mm - h / 2;
+    group.add(plane);
+  });
+  return { obj: group, h, radius: Math.max(data.plane_w_mm, data.plane_h_mm, h) * 0.8, hint: `Photostack · ${data.count} of ${data.total_layers} layers` };
+}
+
+// Volume: a gap-free voxel solid (full height). White shells stay opaque,
+// grey cores render translucent so the internal structure shows through.
+async function makeVolume() {
+  const data = await postJSON("/api/voxels", { id: state.id, config: buildConfig() });
+  const [sx, sy, sz] = data.voxel_size_mm;
+  const h = data.height_mm;
+  const vs = data.voxels;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  vs.forEach((v) => { xmin = Math.min(xmin, v[0]); xmax = Math.max(xmax, v[0]); ymin = Math.min(ymin, v[1]); ymax = Math.max(ymax, v[1]); });
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshLambertMaterial(), vs.length);
+  const m = new THREE.Matrix4(), col = new THREE.Color();
+  vs.forEach((v, i) => {
+    inst.setMatrixAt(i, m.makeTranslation(v[0] - mx, v[1] - my, v[2] - h / 2));
+    const g = Math.max(0.06, v[3] / 255); // exposure → grayscale; floor so cores stay visible
+    inst.setColorAt(i, col.setRGB(g, g, g));
+  });
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  const group = new THREE.Group();
+  group.add(inst);
+  const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
+  return { obj: group, h, radius, hint: `Volume · ${data.count.toLocaleString()} voxels${data.truncated ? " (capped)" : ""}` };
+}
+
+// Lattice: the hollow-cube cage as wireframe boxes (cubic-tessellation only).
+async function makeLattice() {
+  const data = await postJSON("/api/lattice", { id: state.id, config: buildConfig() });
+  const [sx, sy, sz] = data.cube_size_mm;
+  const h = data.height_mm;
+  const cs = data.cells;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  cs.forEach((c) => { xmin = Math.min(xmin, c[0]); xmax = Math.max(xmax, c[0]); ymin = Math.min(ymin, c[1]); ymax = Math.max(ymax, c[1]); });
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
+  const geo = new THREE.BoxGeometry(sx, sy, sz);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xf5a623, wireframe: true, transparent: true, opacity: 0.55 });
+  const inst = new THREE.InstancedMesh(geo, mat, cs.length);
+  const m = new THREE.Matrix4();
+  cs.forEach((c, i) => inst.setMatrixAt(i, m.makeTranslation(c[0] - mx, c[1] - my, c[2] - h / 2)));
+  inst.instanceMatrix.needsUpdate = true;
+  const group = new THREE.Group();
+  group.add(inst);
+  return { obj: group, h, radius: Math.max(xmax - xmin, ymax - ymin, h) * 0.85 || 10, hint: `Lattice · ${data.count.toLocaleString()} cubes${data.truncated ? " (capped)" : ""}` };
+}
+
+const VIEW_BUILDERS = { stack: makeSlices, volume: makeVolume, lattice: makeLattice };
+const VIEW_BUSY = { stack: "Building photostack…", volume: "Building volume…", lattice: "Building lattice…" };
+
+async function buildView(mode) {
+  if (!state.id || !three) return;
+  const key = mode + "|" + JSON.stringify(buildConfig());
+  if (three.stack && three.stackKey === key) {
+    if (three.mesh) three.mesh.visible = false;
+    three.stack.visible = true;
+    return;
+  }
+  $("three-spin").hidden = false;
+  $("three-hint").textContent = VIEW_BUSY[mode] || "Building…";
+  try {
+    const built = await (VIEW_BUILDERS[mode] || makeSlices)();
+    disposeStack();
+    three.scene.add(built.obj);
+    three.stack = built.obj;
+    three.stackKey = key;
+    if (three.mesh) three.mesh.visible = false;
+    three.grid.position.z = -built.h / 2;
+    frame(built.radius);
+    $("three-hint").textContent = built.hint;
+  } catch (e) {
+    $("three-hint").textContent = mode + " failed: " + e.message;
+  } finally {
+    $("three-spin").hidden = true;
+  }
+}
+
+async function setThreeMode(mode) {
+  document.querySelectorAll("#three-mode button").forEach((b) => b.classList.toggle("active", b.dataset.tmode === mode));
+  if (!(await loadThreeLibs())) return;
+  try { if (!three) initThree(); } catch (e) { return; }
+  three.mode = mode;
+  if (!state.id) return;
+  if (mode === "mesh") {
+    if (three.stack) three.stack.visible = false;
+    if (three.mesh) { three.mesh.visible = true; three.grid.position.z = three.meshBottom; frame(three.meshRadius); }
+    $("three-hint").textContent = "Drag to orbit · scroll to zoom · right-drag to pan";
+  } else {
+    await buildView(mode);
+  }
 }
 
 // ── Export ───────────────────────────────────────────────
@@ -390,8 +537,14 @@ function wire() {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".viewer-tabs button").forEach((b) => b.classList.toggle("active", b === btn));
       document.querySelectorAll(".view").forEach((v) => { v.hidden = v.dataset.view !== btn.dataset.view; });
-      if (btn.dataset.view === "model" && three) three.renderer.domElement.dispatchEvent(new Event("resize"));
+      // returning to the 3D tab in stack mode picks up any parameter changes
+      if (btn.dataset.view === "model" && three && three.mode !== "mesh" && state.id) buildView(three.mode);
     });
+  });
+
+  // 3D mesh / photostack toggle
+  document.querySelectorAll("#three-mode button").forEach((btn) => {
+    btn.addEventListener("click", () => setThreeMode(btn.dataset.tmode));
   });
 
   // scrubber

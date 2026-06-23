@@ -143,6 +143,11 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .viewer-tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 14px; font-size: 13px; }
 .viewer-tabs button.active { color: var(--text); border-color: var(--accent); }
 
+.three-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.segmented.small { padding: 3px; max-width: 380px; }
+.segmented.small button { padding: 6px 10px; font-size: 12px; }
+.three-toolbar .hint { margin: 0; }
+
 .stage { flex: 1; padding: 14px; min-height: 0; display: flex; }
 .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .canvas-wrap {

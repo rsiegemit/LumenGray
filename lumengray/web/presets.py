@@ -45,8 +45,9 @@ PRESETS = [
     {
         "id": "prism",
         "name": "Rectangular prism",
-        "description": "4 × 7 × 10 mm — the canonical hollow-cube demo",
-        "build": lambda: trimesh.creation.box(extents=[7.0, 10.0, 4.0]),
+        # 10 mm long (X) × 7 mm wide (Y) × 4 mm tall (Z)
+        "description": "10 × 7 × 4 mm — the canonical hollow-cube demo",
+        "build": lambda: trimesh.creation.box(extents=[10.0, 7.0, 4.0]),
         "config": _cubic(),
     },
     {
