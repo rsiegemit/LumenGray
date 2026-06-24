@@ -53,30 +53,27 @@ def _is_cap(layer_index: int, total_layers: int, tess: CubicTessellation) -> boo
 def _strut_mask(shape: tuple, layer_index: int, tess: CubicTessellation) -> np.ndarray:
     """Boolean (height, width): True on the cube *edges* (white support struts).
 
-    A voxel is white where it sits within ``shell_px`` of a cube face on at least
-    TWO of the three axes — i.e. on a cube edge. One axis alone is a face interior
-    (left grey), so faces become open frames and the interior shows vertical
-    columns at the cube corners.
+    Struts live on a single shared grid — one `shell_px`-thick line per cube
+    period (at the low face of each cell) — so adjacent cubes share a boundary
+    instead of each drawing their own (which doubled the wall/frame thickness at
+    every junction). A voxel is white where it lands on that grid line on at least
+    TWO of the three axes: an interior layer shows vertical columns at the grid
+    nodes, and a grid layer in Z shows an open frame.
     """
     height, width = shape
     # 0-based layer position within the tessellated (interior) region.
     z_in_cube = (layer_index - 1 - tess.cap_bottom_layers) % tess.cube_z_layers
-    near_z = 1 if _on_edge(z_in_cube, tess.cube_z_layers, tess.shell_px) else 0
+    near_z = 1 if z_in_cube < tess.shell_px else 0  # shared frame at the cube boundary
 
-    col_near = _axis_shell(width, tess.cube_xy_px, tess.shell_px)
-    row_near = _axis_shell(height, tess.cube_xy_px, tess.shell_px)
+    col_near = _axis_grid(width, tess.cube_xy_px, tess.shell_px)
+    row_near = _axis_grid(height, tess.cube_xy_px, tess.shell_px)
     near_count = col_near[None, :].astype(np.uint8) + row_near[:, None].astype(np.uint8) + near_z
     return near_count >= 2
 
 
-def _axis_shell(length: int, cube: int, shell: int) -> np.ndarray:
-    """Boolean along one axis: True where the voxel is within `shell` of a cube face."""
-    position = np.arange(length) % cube
-    return (position < shell) | (position >= cube - shell)
-
-
-def _on_edge(position: int, cube: int, shell: int) -> bool:
-    return position < shell or position >= cube - shell
+def _axis_grid(length: int, cube: int, shell: int) -> np.ndarray:
+    """Boolean along one axis: True on the shared grid line (low `shell` of each period)."""
+    return (np.arange(length) % cube) < shell
 
 
 def _boundary_mask(solid: np.ndarray, boundary_px: int) -> np.ndarray:

@@ -127,13 +127,9 @@ def main():
     L = tlayer(5)
     solid_t = L > 0
     H, W = L.shape
-    col_s = (np.arange(W) % tess.cube_xy_px < tess.shell_px) | (
-        np.arange(W) % tess.cube_xy_px >= tess.cube_xy_px - tess.shell_px
-    )
-    row_s = (np.arange(H) % tess.cube_xy_px < tess.shell_px) | (
-        np.arange(H) % tess.cube_xy_px >= tess.cube_xy_px - tess.shell_px
-    )
-    # layer 5: z_in_cube=(5-1-2)%6=2 → not a z-face → strut where col-edge AND row-edge.
+    col_s = (np.arange(W) % tess.cube_xy_px) < tess.shell_px  # shared grid line (low face)
+    row_s = (np.arange(H) % tess.cube_xy_px) < tess.shell_px
+    # layer 5: z_in_cube=(5-1-2)%6=2 → not a z-grid layer → strut where col-grid AND row-grid.
     strut_t = col_s[None, :] & row_s[:, None]
     pred = np.zeros_like(L)
     pred[solid_t] = np.where(strut_t[solid_t], 255, 128)
