@@ -24,6 +24,8 @@ dependencies = [
   # [easy] pulls networkx + shapely etc. — required for mesh.section slicing.
   # A bare `trimesh` install omits them and slicing fails at runtime.
   "trimesh[easy]>=4.0",
+  # boolean backend for drilling channels into presets (box.difference).
+  "manifold3d>=2.3",
 ]
 
 [project.optional-dependencies]

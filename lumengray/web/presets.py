@@ -9,6 +9,7 @@ size knobs (all in mm) the UI exposes.
 
 from __future__ import annotations
 
+import numpy as np
 import trimesh
 
 _PRINTER = {"resolution": [1920, 1080], "pixel_size_um": 35, "layer_height_um": 50}
@@ -42,8 +43,23 @@ def _uniform(value: int = 255) -> dict:
     return _config({"default_solid_value": value})
 
 
-def _p(key: str, label: str, default: float) -> dict:
-    return {"key": key, "label": label, "default": default}
+def _p(key: str, label: str, default: float, minimum: float = 0.1) -> dict:
+    return {"key": key, "label": label, "default": default, "min": minimum}
+
+
+def _prism(p: dict) -> trimesh.Trimesh:
+    """A rectangular block, optionally drilled by a circular channel along its
+    length (X) — straight through the centre of the width×height (e.g. 4×7) face."""
+    box = trimesh.creation.box(extents=[p["length"], p["width"], p["height"]])
+    d = p.get("channel", 0.0)
+    if d and d > 0:
+        bore = trimesh.creation.cylinder(radius=d / 2.0, height=p["length"] * 1.2)
+        bore.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))  # Z→X
+        try:
+            return box.difference(bore)
+        except Exception:  # noqa: BLE001 - no boolean backend → ship the solid block
+            return box
+    return box
 
 
 # (id, name, description, params [editable mm dims], mesh builder(params), config)
@@ -51,9 +67,14 @@ PRESETS = [
     {
         "id": "prism",
         "name": "Rectangular prism",
-        "description": "the canonical support-column demo",
-        "params": [_p("length", "Length (mm)", 10.0), _p("width", "Width (mm)", 7.0), _p("height", "Height (mm)", 4.0)],
-        "build": lambda p: trimesh.creation.box(extents=[p["length"], p["width"], p["height"]]),
+        "description": "the canonical support-column demo (with an optional length-wise channel)",
+        "params": [
+            _p("length", "Length (mm)", 10.0),
+            _p("width", "Width (mm)", 7.0),
+            _p("height", "Height (mm)", 4.0),
+            _p("channel", "Channel Ø (mm)", 1.0, minimum=0.0),
+        ],
+        "build": _prism,
         "config": _cubic(),
     },
     {
@@ -108,10 +129,11 @@ def get_preset(preset_id: str) -> dict | None:
 def resolve_params(preset: dict, overrides: dict | None) -> dict:
     """Merge user overrides over a preset's defaults; clamp each to a sane range."""
     values = {p["key"]: float(p["default"]) for p in preset["params"]}
+    floors = {p["key"]: float(p.get("min", 0.1)) for p in preset["params"]}
     for key in values:
         if overrides and key in overrides:
             try:
-                values[key] = max(0.1, min(500.0, float(overrides[key])))
+                values[key] = max(floors[key], min(500.0, float(overrides[key])))
             except (TypeError, ValueError):
                 pass
     return values
