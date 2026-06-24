@@ -195,6 +195,47 @@ function syncSlider() {
   $("layer-label").textContent = `${state.index} / ${state.total}`;
 }
 
+// ── 2D zoom / pan ────────────────────────────────────────
+const zoomState = { z: 1, x: 0, y: 0, drag: null };
+
+function applyZoom() {
+  const img = $("layer-img");
+  const maxX = Math.max(0, (zoomState.z - 1) * img.clientWidth / 2);
+  const maxY = Math.max(0, (zoomState.z - 1) * img.clientHeight / 2);
+  zoomState.x = Math.max(-maxX, Math.min(maxX, zoomState.x));
+  zoomState.y = Math.max(-maxY, Math.min(maxY, zoomState.y));
+  img.style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.z})`;
+  img.classList.toggle("zoomed", zoomState.z > 1);
+}
+
+function setZoom(pct) {
+  zoomState.z = Math.max(1, pct / 100);
+  if (zoomState.z === 1) { zoomState.x = 0; zoomState.y = 0; }
+  $("zoom-label").textContent = Math.round(zoomState.z * 100) + "%";
+  applyZoom();
+}
+
+function wireZoom() {
+  $("zoom-slider").addEventListener("input", (e) => setZoom(parseInt(e.target.value, 10)));
+  const img = $("layer-img");
+  img.addEventListener("pointerdown", (e) => {
+    if (zoomState.z <= 1) return;
+    e.preventDefault();
+    zoomState.drag = { sx: e.clientX, sy: e.clientY, ox: zoomState.x, oy: zoomState.y };
+    img.classList.add("dragging");
+    img.setPointerCapture(e.pointerId);
+  });
+  img.addEventListener("pointermove", (e) => {
+    if (!zoomState.drag) return;
+    zoomState.x = zoomState.drag.ox + (e.clientX - zoomState.drag.sx);
+    zoomState.y = zoomState.drag.oy + (e.clientY - zoomState.drag.sy);
+    applyZoom();
+  });
+  const end = () => { zoomState.drag = null; img.classList.remove("dragging"); };
+  img.addEventListener("pointerup", end);
+  img.addEventListener("pointercancel", end);
+}
+
 // ── Export ───────────────────────────────────────────────
 async function exportStack() {
   if (!state.id) return;
@@ -269,6 +310,7 @@ function wire() {
   $("layer-slider").addEventListener("input", (e) => { state.index = parseInt(e.target.value, 10); syncSlider(); schedulePreview(); });
   $("prev-layer").addEventListener("click", () => { state.index = Math.max(1, state.index - 1); syncSlider(); schedulePreview(); });
   $("next-layer").addEventListener("click", () => { state.index = Math.min(state.total, state.index + 1); syncSlider(); schedulePreview(); });
+  wireZoom();
 
   $("export-btn").addEventListener("click", exportStack);
   $("copy-config").addEventListener("click", () => navigator.clipboard.writeText($("config-json").textContent).then(() => status("Config copied to clipboard")));
