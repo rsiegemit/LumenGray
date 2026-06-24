@@ -76,9 +76,32 @@ def _axis_grid(length: int, cube: int, shell: int) -> np.ndarray:
     return (np.arange(length) % cube) < shell
 
 
+# How wide a void (px) still counts as an internal channel to skip for the rim.
+# Closing bridges gaps up to ~2x this, so ~3.4 mm at 35 um pixels.
+_CHANNEL_BRIDGE_PX = 48
+
+
 def _boundary_mask(solid: np.ndarray, boundary_px: int) -> np.ndarray:
-    """Solid pixels within `boundary_px` (L-inf / chessboard) of the nearest edge."""
+    """Solid pixels within `boundary_px` of the part's OUTER wall (L-inf).
+
+    The rim tracks the outer silhouette only: enclosed holes are filled and thin
+    internal channels are bridged, so pixels next to a drilled channel stay grey
+    (no boundary) while the model's outer skin still gets its white rim.
+    """
     if boundary_px <= 0:
         return np.zeros(solid.shape, dtype=bool)
-    distance = ndimage.distance_transform_cdt(solid, metric="chessboard")
-    return solid & (distance <= boundary_px)
+    rim = np.zeros(solid.shape, dtype=bool)
+    ys, xs = np.where(solid)
+    if xs.size == 0:
+        return rim
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+
+    pad = _CHANNEL_BRIDGE_PX + 2
+    sub = solid[y0:y1, x0:x1]
+    padded = np.pad(sub, pad)
+    # Outer silhouette: close thin channels, then fill any fully enclosed holes.
+    outer = ndimage.binary_closing(padded, iterations=_CHANNEL_BRIDGE_PX, border_value=0)
+    outer = ndimage.binary_fill_holes(outer)
+    distance = ndimage.distance_transform_cdt(outer, metric="chessboard")[pad:-pad, pad:-pad]
+    rim[y0:y1, x0:x1] = sub & (distance <= boundary_px)
+    return rim
