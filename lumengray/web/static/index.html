@@ -26,7 +26,7 @@
     </div>
     <div class="topbar-actions">
       <a class="ghost-btn" href="https://github.com/rsiegemit/LumenGray" target="_blank" rel="noopener">GitHub ↗</a>
-      <button id="export-btn" class="primary-btn" disabled>Export stack (.zip)</button>
+      <button id="export-btn" class="primary-btn" disabled title="Render every layer and download the full photostack as a .zip (with manifest.json).">Export stack (.zip)</button>
     </div>
   </header>
 
@@ -62,64 +62,64 @@
       <section class="card">
         <h2>Printer</h2>
         <div class="grid2">
-          <label>Width (px)<input type="number" id="res-w" value="1920" min="1" step="1" /></label>
-          <label>Height (px)<input type="number" id="res-h" value="1080" min="1" step="1" /></label>
-          <label>Pixel size (µm)<input type="number" id="pixel-um" value="35" min="1" step="1" /></label>
-          <label>Layer height (µm)<input type="number" id="layer-um" value="50" min="1" step="1" /></label>
+          <label title="Build-area width in pixels (printer-native, e.g. 1920).">Width (px)<input type="number" id="res-w" value="1920" min="1" step="1" /></label>
+          <label title="Build-area height in pixels (e.g. 1080).">Height (px)<input type="number" id="res-h" value="1080" min="1" step="1" /></label>
+          <label title="Physical size of one XY pixel, in microns (Lumen X3 ≈ 35).">Pixel size (µm)<input type="number" id="pixel-um" value="35" min="1" step="1" /></label>
+          <label title="Z thickness of each printed layer, in microns (20 / 50 / 100).">Layer height (µm)<input type="number" id="layer-um" value="50" min="1" step="1" /></label>
         </div>
       </section>
 
       <section class="card">
         <h2>Orientation</h2>
-        <label class="checkrow"><input type="checkbox" id="center-xy" checked /> Center on build plate</label>
+        <label class="checkrow" title="Center the model in XY on the build area."><input type="checkbox" id="center-xy" checked /> Center on build plate</label>
         <div class="grid3">
-          <label>Rot X°<input type="number" id="rot-x" value="0" step="5" /></label>
-          <label>Rot Y°<input type="number" id="rot-y" value="0" step="5" /></label>
-          <label>Rot Z°<input type="number" id="rot-z" value="0" step="5" /></label>
+          <label title="Rotate the model about X (degrees) before slicing.">Rot X°<input type="number" id="rot-x" value="0" step="5" /></label>
+          <label title="Rotate the model about Y (degrees) before slicing.">Rot Y°<input type="number" id="rot-y" value="0" step="5" /></label>
+          <label title="Rotate the model about Z (degrees) before slicing.">Rot Z°<input type="number" id="rot-z" value="0" step="5" /></label>
         </div>
       </section>
 
       <section class="card">
         <h2>Grayscale mode</h2>
         <div class="segmented" id="mode-seg">
-          <button data-mode="uniform" class="active">Uniform</button>
-          <button data-mode="gradient">Gradient</button>
-          <button data-mode="cubic">Cubic</button>
-          <button data-mode="triangular">Triangular</button>
+          <button data-mode="uniform" class="active" title="Every cured pixel gets the same exposure.">Uniform</button>
+          <button data-mode="gradient" title="Exposure ramps from the edges into the core (anti-aliased walls).">Gradient</button>
+          <button data-mode="cubic" title="Hollow-cube strut lattice infill (white edges, grey faces/core).">Cubic</button>
+          <button data-mode="triangular" title="Buckminster-Fuller-style triangular strut lattice infill.">Triangular</button>
         </div>
 
         <div class="mode-panel" data-panel="uniform">
-          <label class="slider">Solid value <output id="o-solid">255</output>
+          <label class="slider" title="Exposure (0–255) for every cured pixel. 255 = full cure.">Solid value <output id="o-solid">255</output>
             <input type="range" id="solid-value" min="0" max="255" value="255" />
           </label>
         </div>
 
         <div class="mode-panel" data-panel="gradient" hidden>
           <p class="hint">Edge-feather: dark at walls/holes, bright in the core.</p>
-          <label class="slider">Min (edge) <output id="o-gmin">40</output>
+          <label class="slider" title="Exposure right at walls and holes (the edge). Lower = softer edge.">Min (edge) <output id="o-gmin">40</output>
             <input type="range" id="g-min" min="0" max="255" value="40" />
           </label>
-          <label class="slider">Max (core) <output id="o-gmax">255</output>
+          <label class="slider" title="Exposure deep inside the part (the core).">Max (core) <output id="o-gmax">255</output>
             <input type="range" id="g-max" min="0" max="255" value="255" />
           </label>
-          <label>Falloff (mm)<input type="number" id="g-falloff" value="0.35" min="0.01" step="0.05" /></label>
+          <label title="Distance over which exposure ramps from edge to core, in mm.">Falloff (mm)<input type="number" id="g-falloff" value="0.35" min="0.01" step="0.05" /></label>
         </div>
 
         <div class="mode-panel" data-panel="cubic" hidden>
           <p class="hint">White cube-edge support columns with grey faces/core, white caps + boundary rim.</p>
           <div class="grid2">
-            <label>Bottom caps<input type="number" id="t-cap-b" value="2" min="0" step="1" /></label>
-            <label>Top caps<input type="number" id="t-cap-t" value="2" min="0" step="1" /></label>
-            <label>Cube XY (px)<input type="number" id="t-cube-xy" value="6" min="1" step="1" /></label>
-            <label>Cube Z (layers)<input type="number" id="t-cube-z" value="6" min="1" step="1" /></label>
-            <label>Shell (px)<input type="number" id="t-shell" value="1" min="1" step="1" /></label>
-            <label>Boundary (px)<input type="number" id="t-boundary" value="3" min="0" step="1" /></label>
-            <label>Black core (px)<input type="number" id="t-core" value="0" min="0" step="1" /></label>
+            <label title="Number of fully-solid white layers at the bottom of the stack.">Bottom caps<input type="number" id="t-cap-b" value="2" min="0" step="1" /></label>
+            <label title="Number of fully-solid white layers at the top of the stack.">Top caps<input type="number" id="t-cap-t" value="2" min="0" step="1" /></label>
+            <label title="Cube edge across XY, in pixels.">Cube XY (px)<input type="number" id="t-cube-xy" value="6" min="1" step="1" /></label>
+            <label title="Cube height in Z, in layers.">Cube Z (layers)<input type="number" id="t-cube-z" value="6" min="1" step="1" /></label>
+            <label title="Strut (cube-edge) thickness, in voxels.">Shell (px)<input type="number" id="t-shell" value="1" min="1" step="1" /></label>
+            <label title="White rim on the outer wall: solid within this many px of the edge (0 = none).">Boundary (px)<input type="number" id="t-boundary" value="3" min="0" step="1" /></label>
+            <label title="Void (black) cube centred in each cell, this many voxels per side (0 = none).">Black core (px)<input type="number" id="t-core" value="0" min="0" step="1" /></label>
           </div>
-          <label class="slider">Grey core <output id="o-grey">128</output>
+          <label class="slider" title="Exposure for the cube faces/core (the grey fill).">Grey core <output id="o-grey">128</output>
             <input type="range" id="t-grey" min="0" max="255" value="128" />
           </label>
-          <label class="slider">White value <output id="o-white">255</output>
+          <label class="slider" title="Exposure for struts, the rim, and the caps.">White value <output id="o-white">255</output>
             <input type="range" id="t-white" min="0" max="255" value="255" />
           </label>
         </div>
@@ -127,18 +127,18 @@
         <div class="mode-panel" data-panel="triangular" hidden>
           <p class="hint">Buckminster-Fuller-style triangular struts: white columns at the grid nodes + triangular frames, grey faces/core.</p>
           <div class="grid2">
-            <label>Bottom caps<input type="number" id="tr-cap-b" value="2" min="0" step="1" /></label>
-            <label>Top caps<input type="number" id="tr-cap-t" value="2" min="0" step="1" /></label>
-            <label>Triangle (px)<input type="number" id="tr-tri" value="10" min="3" step="1" /></label>
-            <label>Frame Z (layers)<input type="number" id="tr-z" value="6" min="1" step="1" /></label>
-            <label>Strut (px)<input type="number" id="tr-shell" value="1" min="1" step="1" /></label>
-            <label>Boundary (px)<input type="number" id="tr-boundary" value="3" min="0" step="1" /></label>
-            <label>Black core (px)<input type="number" id="tr-core" value="0" min="0" step="1" /></label>
+            <label title="Number of fully-solid white layers at the bottom of the stack.">Bottom caps<input type="number" id="tr-cap-b" value="2" min="0" step="1" /></label>
+            <label title="Number of fully-solid white layers at the top of the stack.">Top caps<input type="number" id="tr-cap-t" value="2" min="0" step="1" /></label>
+            <label title="Triangle edge length in XY, in pixels.">Triangle (px)<input type="number" id="tr-tri" value="10" min="3" step="1" /></label>
+            <label title="Spacing between horizontal triangular frames, in Z layers.">Frame Z (layers)<input type="number" id="tr-z" value="6" min="1" step="1" /></label>
+            <label title="Strut (triangle-edge) thickness, in voxels.">Strut (px)<input type="number" id="tr-shell" value="1" min="1" step="1" /></label>
+            <label title="White rim on the outer wall: solid within this many px of the edge (0 = none).">Boundary (px)<input type="number" id="tr-boundary" value="3" min="0" step="1" /></label>
+            <label title="Void (black) core centred in each triangle, this many voxels (0 = none).">Black core (px)<input type="number" id="tr-core" value="0" min="0" step="1" /></label>
           </div>
-          <label class="slider">Grey core <output id="o-trgrey">128</output>
+          <label class="slider" title="Exposure for the triangle faces/core (the grey fill).">Grey core <output id="o-trgrey">128</output>
             <input type="range" id="tr-grey" min="0" max="255" value="128" />
           </label>
-          <label class="slider">White value <output id="o-trwhite">255</output>
+          <label class="slider" title="Exposure for struts, the rim, and the caps.">White value <output id="o-trwhite">255</output>
             <input type="range" id="tr-white" min="0" max="255" value="255" />
           </label>
         </div>
@@ -186,10 +186,10 @@
         <div class="view view-model" data-view="model" hidden>
           <div class="three-toolbar">
             <div class="segmented small" id="three-mode">
-              <button data-tmode="mesh" class="active">Mesh</button>
-              <button data-tmode="stack">Photostack</button>
-              <button data-tmode="volume">Volume</button>
-              <button data-tmode="lattice">Lattice</button>
+              <button data-tmode="mesh" class="active" title="The input STL mesh.">Mesh</button>
+              <button data-tmode="stack" title="The rendered layers stacked as thin slices.">Photostack</button>
+              <button data-tmode="volume" title="A gap-free voxel solid at full height, shaded by exposure.">Volume</button>
+              <button data-tmode="lattice" title="The cube-edge support cage as a wireframe (cubic mode only).">Lattice</button>
             </div>
             <label class="cutaway" title="Slice away part of the model to see inside">
               Cutaway

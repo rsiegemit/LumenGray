@@ -81,6 +81,7 @@ function renderDims(id, values) {
     input.min = "0.1";
     input.step = "0.5";
     input.dataset.key = param.key;
+    label.title = param.label + " of the model, in mm (regenerates the mesh).";
     input.value = (values && values[param.key] != null ? values[param.key] : param.default);
     input.addEventListener("input", () => {
       clearTimeout(dimsTimer);
