@@ -1,18 +1,17 @@
-"""Cubic-tessellation grayscale mode.
+"""Tessellation grayscale modes — shared base + the cubic kind.
 
-A 3D infill for the photostack: the model interior is tiled with cubes whose
-*edges* are white (vertical support columns + top/bottom frames) and whose faces
-and core are grey. Each layer is wrapped in a pure-white boundary rim, and the
-stack is capped top and bottom with solid-white layers.
+A tessellation infill tiles the model interior with a strut lattice: white
+support struts (columns at the grid nodes, braced by horizontal frames every
+`z_period` layers), grey faces/core, solid-white caps top and bottom, and a
+white boundary rim on the part's outer wall. The only thing that differs between
+*kinds* is the XY grid — how many grid-line families a pixel lands on:
 
-Everything is reasoned about in *voxels*: one voxel is an output pixel in XY
-and one photostack layer in Z. With the printer's 35um XY pixels and 50um
-layers the voxels - and the cubes - are only approximately cubic, by design.
+  - cubic     → a square grid (2 families: columns + rows)
+  - triangular→ a 60-degree triangular grid (3 families)   [see triangulation.py]
 
-The lattice is anchored to the canvas (pixel column/row 0) in XY and to the
-first interior layer in Z, so every layer is registered to the same 3D grid and
-the struts stack into continuous columns. Works on any sliced geometry: the
-solid mask both clips the lattice and supplies the per-layer boundary edge.
+`_assemble` holds all the shared scaffolding; each kind supplies a callable that
+returns the per-pixel XY family count. Everything is reasoned about in voxels:
+one voxel is an output pixel in XY and one photostack layer in Z.
 """
 
 from __future__ import annotations
@@ -23,59 +22,76 @@ from scipy import ndimage
 from .config import CubicTessellation
 
 
+def _assemble(solid, layer_index, total_layers, params, z_period, xy_near_count, xy_core):
+    """Shared per-layer build for any tessellation kind.
+
+    `params` provides the common fields (caps, shell_px, core_px, boundary_px,
+    grey/white). `z_period` is the kind's Z frame spacing. `xy_near_count(shape,
+    shell)` returns a uint8 (h, w) count of XY grid-line families each pixel is on
+    (>= 2 counting the Z frame → white strut). `xy_core(shape, core_px)` returns a
+    bool (h, w) of each cell's centre region (carved to black/void in the middle
+    layers of the cell).
+    """
+    white = np.uint8(params.white_value)
+    layer = np.zeros(solid.shape, dtype=np.uint8)
+
+    if layer_index <= params.cap_bottom_layers or layer_index > total_layers - params.cap_top_layers:
+        return np.where(solid, white, layer)  # solid-white cap
+
+    z_in = (layer_index - 1 - params.cap_bottom_layers) % z_period
+    near_z = 1 if z_in < params.shell_px else 0  # shared horizontal frame at the low side
+    near = xy_near_count(solid.shape, params.shell_px)
+    strut = (near + near_z) >= 2
+
+    layer = np.where(solid, np.where(strut, white, np.uint8(params.grey_value)), layer)
+
+    # Black (void) core centred in each cell — only the cell's middle Z layers.
+    core_px = params.core_px
+    if core_px > 0:
+        z_lo = (z_period - core_px) // 2
+        if z_lo <= z_in < z_lo + core_px:
+            layer = np.where(solid & xy_core(solid.shape, core_px), np.uint8(0), layer)
+
+    rim = _boundary_mask(solid, params.boundary_px)
+    return np.where(rim, white, layer)
+
+
+# ── Cubic kind ───────────────────────────────────────────
 def tessellation_layer(
     solid: np.ndarray,
     layer_index: int,  # 1-indexed
     total_layers: int,
     tess: CubicTessellation,
 ) -> np.ndarray:
-    """Return the uint8 grayscale layer for one slice under cubic tessellation."""
-    white = np.uint8(tess.white_value)
-    layer = np.zeros(solid.shape, dtype=np.uint8)
+    """One slice under cubic tessellation: square grid → columns + frames."""
+    def xy_near(shape, shell):
+        height, width = shape
+        col = _axis_grid(width, tess.cube_xy_px, shell)
+        row = _axis_grid(height, tess.cube_xy_px, shell)
+        return col[None, :].astype(np.uint8) + row[:, None].astype(np.uint8)
 
-    if _is_cap(layer_index, total_layers, tess):
-        return np.where(solid, white, layer)
+    def xy_core(shape, core):
+        height, width = shape
+        col = _axis_center(width, tess.cube_xy_px, core)
+        row = _axis_center(height, tess.cube_xy_px, core)
+        return col[None, :] & row[:, None]
 
-    strut = _strut_mask(solid.shape, layer_index, tess)
-    layer = np.where(solid, np.where(strut, white, np.uint8(tess.grey_value)), layer)
-
-    rim = _boundary_mask(solid, tess.boundary_px)
-    return np.where(rim, white, layer)
-
-
-def _is_cap(layer_index: int, total_layers: int, tess: CubicTessellation) -> bool:
-    return (
-        layer_index <= tess.cap_bottom_layers
-        or layer_index > total_layers - tess.cap_top_layers
-    )
+    return _assemble(solid, layer_index, total_layers, tess, tess.cube_z_layers, xy_near, xy_core)
 
 
-def _strut_mask(shape: tuple, layer_index: int, tess: CubicTessellation) -> np.ndarray:
-    """Boolean (height, width): True on the cube *edges* (white support struts).
-
-    Struts live on a single shared grid — one `shell_px`-thick line per cube
-    period (at the low face of each cell) — so adjacent cubes share a boundary
-    instead of each drawing their own (which doubled the wall/frame thickness at
-    every junction). A voxel is white where it lands on that grid line on at least
-    TWO of the three axes: an interior layer shows vertical columns at the grid
-    nodes, and a grid layer in Z shows an open frame.
-    """
-    height, width = shape
-    # 0-based layer position within the tessellated (interior) region.
-    z_in_cube = (layer_index - 1 - tess.cap_bottom_layers) % tess.cube_z_layers
-    near_z = 1 if z_in_cube < tess.shell_px else 0  # shared frame at the cube boundary
-
-    col_near = _axis_grid(width, tess.cube_xy_px, tess.shell_px)
-    row_near = _axis_grid(height, tess.cube_xy_px, tess.shell_px)
-    near_count = col_near[None, :].astype(np.uint8) + row_near[:, None].astype(np.uint8) + near_z
-    return near_count >= 2
-
-
-def _axis_grid(length: int, cube: int, shell: int) -> np.ndarray:
+def _axis_grid(length: int, period: int, shell: int) -> np.ndarray:
     """Boolean along one axis: True on the shared grid line (low `shell` of each period)."""
-    return (np.arange(length) % cube) < shell
+    return (np.arange(length) % period) < shell
 
 
+def _axis_center(length: int, period: int, core: int) -> np.ndarray:
+    """Boolean along one axis: True on the central `core` band of each period."""
+    pos = np.arange(length) % period
+    lo = (period - core) // 2
+    return (pos >= lo) & (pos < lo + core)
+
+
+# ── Shared boundary rim ──────────────────────────────────
 # How wide a void (px) still counts as an internal channel to skip for the rim.
 # Closing bridges gaps up to ~2x this, so ~3.4 mm at 35 um pixels.
 _CHANNEL_BRIDGE_PX = 48

@@ -13,6 +13,7 @@ from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
 from .tessellation import tessellation_layer
+from .triangulation import triangulation_layer
 
 PREVIEW_FILENAME = "_preview.png"
 
@@ -62,7 +63,11 @@ def run(
         "regions": len(regions),
         "rotation_deg": config.rotation_deg,
         "out_dir": out_dir,
-        "mode": "cubic_tessellation" if config.tessellation is not None else "regions",
+        "mode": (
+            "triangular_tessellation" if config.triangulation is not None
+            else "cubic_tessellation" if config.tessellation is not None
+            else "regions"
+        ),
     }
     if preview:
         preview_path = os.path.join(out_dir, PREVIEW_FILENAME)
@@ -73,6 +78,8 @@ def run(
 
 def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     """Build one uint8 grayscale layer. Shared by the full run and the live preview."""
+    if config.triangulation is not None:
+        return triangulation_layer(solid, index, total_layers, config.triangulation)
     if config.tessellation is not None:
         return tessellation_layer(solid, index, total_layers, config.tessellation)
     layer = base_layer(solid, config.gradient, config.default_solid_value, pixel_mm)

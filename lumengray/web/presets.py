@@ -148,6 +148,8 @@ def mode_of(config: dict) -> str:
     grayscale = config.get("grayscale", {})
     if grayscale.get("cubic_tessellation"):
         return "cubic_tessellation"
+    if grayscale.get("triangular_tessellation"):
+        return "triangular_tessellation"
     if grayscale.get("gradient"):
         return "gradient"
     if grayscale.get("regions"):

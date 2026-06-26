@@ -28,6 +28,20 @@ DEFAULT_TESSELLATION = {
     "cube_xy_px": 6,
     "cube_z_layers": 6,
     "shell_px": 1,
+    "core_px": 0,
+    "boundary_px": 3,
+    "grey_value": 128,
+    "white_value": 255,
+}
+
+# Triangular (Buckminster-Fuller-style) tessellation defaults (voxel counts).
+DEFAULT_TRIANGULAR = {
+    "cap_bottom_layers": 2,
+    "cap_top_layers": 2,
+    "tri_px": 10,  # triangle edge length in XY pixels
+    "z_layers": 6,  # spacing between horizontal triangular frames, in Z layers
+    "shell_px": 1,
+    "core_px": 0,
     "boundary_px": 3,
     "grey_value": 128,
     "white_value": 255,
@@ -77,9 +91,30 @@ class CubicTessellation:
     cube_xy_px: int  # cube edge in XY pixels
     cube_z_layers: int  # cube edge in Z layers
     shell_px: int  # white shell thickness (voxels) on every face; core = cube - 2*shell
+    core_px: int  # black (void) cube in each cell's centre, this many voxels per side (0 = none)
     boundary_px: int  # per-layer white rim: solid within this many px (L-inf) of an edge
     grey_value: int  # fill for the hollow cube core
     white_value: int  # fill for shells, rim, and caps
+
+
+@dataclass(frozen=True)
+class TriangularTessellation:
+    """Buckminster-Fuller-style triangular strut infill (replaces the base fill).
+
+    A triangular grid in XY (three line families at 60 deg) gives vertical white
+    columns at the grid nodes, braced by horizontal triangular frames every
+    `z_layers`; triangle faces and the core stay grey.
+    """
+
+    cap_bottom_layers: int  # solid-white layers at the bottom of the stack
+    cap_top_layers: int  # solid-white layers at the top of the stack
+    tri_px: int  # triangle edge length in XY pixels
+    z_layers: int  # spacing between horizontal triangular frames, in Z layers
+    shell_px: int  # white strut thickness (voxels)
+    core_px: int  # black (void) core in each cell's centre, this many voxels (0 = none)
+    boundary_px: int  # per-layer white rim: solid within this many px (L-inf) of an edge
+    grey_value: int  # fill for the triangle faces / core
+    white_value: int  # fill for struts, rim, and caps
 
 
 @dataclass(frozen=True)
@@ -91,6 +126,7 @@ class Config:
     rotation_deg: tuple  # (x, y, z) degrees applied before slicing
     regions: tuple
     tessellation: CubicTessellation | None  # hollow-cube infill; overrides gradient+regions
+    triangulation: TriangularTessellation | None  # triangular strut infill; overrides the above
 
 
 def default_config() -> Config:
@@ -103,12 +139,18 @@ def default_config() -> Config:
         rotation_deg=(0.0, 0.0, 0.0),
         regions=(),
         tessellation=None,
+        triangulation=None,
     )
 
 
 def default_tessellation() -> CubicTessellation:
     """The default hollow-cube infill (matches DEFAULT_TESSELLATION)."""
     return CubicTessellation(**DEFAULT_TESSELLATION)
+
+
+def default_triangular() -> TriangularTessellation:
+    """The default triangular strut infill (matches DEFAULT_TRIANGULAR)."""
+    return TriangularTessellation(**DEFAULT_TRIANGULAR)
 
 
 def load_config(path: str) -> Config:
@@ -148,11 +190,12 @@ def _build_config(raw: dict) -> Config:
         for index, item in enumerate(grayscale.get("regions", []))
     )
     tessellation = _build_tessellation(grayscale.get("cubic_tessellation"))
+    triangulation = _build_triangular(grayscale.get("triangular_tessellation"))
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
     return Config(
-        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation
+        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation
     )
 
 
@@ -223,7 +266,52 @@ def _build_tessellation(raw) -> CubicTessellation | None:
         cube_xy_px=cube_xy,
         cube_z_layers=cube_z,
         shell_px=shell,
+        core_px=_int("core_px", 0),
         boundary_px=boundary,
+        grey_value=grey,
+        white_value=white,
+    )
+
+
+def _build_triangular(raw) -> TriangularTessellation | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("'grayscale.triangular_tessellation' must be an object")
+    if raw.get("enabled") is False:
+        return None
+
+    def _int(key: str, minimum: int) -> int:
+        value = raw.get(key, DEFAULT_TRIANGULAR[key])
+        if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+            raise ConfigError(
+                f"grayscale.triangular_tessellation.{key} must be an integer >= {minimum}"
+            )
+        return value
+
+    tri = _int("tri_px", 3)
+    z_layers = _int("z_layers", 1)
+    shell = _int("shell_px", 1)
+    if 2 * shell >= tri:
+        raise ConfigError(
+            "grayscale.triangular_tessellation.shell_px too large for tri_px (need 2*shell_px < tri_px)"
+        )
+    grey = _validate_value(
+        raw.get("grey_value", DEFAULT_TRIANGULAR["grey_value"]),
+        "grayscale.triangular_tessellation.grey_value",
+    )
+    white = _validate_value(
+        raw.get("white_value", DEFAULT_TRIANGULAR["white_value"]),
+        "grayscale.triangular_tessellation.white_value",
+    )
+    return TriangularTessellation(
+        cap_bottom_layers=_int("cap_bottom_layers", 0),
+        cap_top_layers=_int("cap_top_layers", 0),
+        tri_px=tri,
+        z_layers=z_layers,
+        shell_px=shell,
+        core_px=_int("core_px", 0),
+        boundary_px=_int("boundary_px", 0),
         grey_value=grey,
         white_value=white,
     )

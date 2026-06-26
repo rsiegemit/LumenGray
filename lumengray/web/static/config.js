@@ -40,9 +40,22 @@ export function buildConfig() {
       cube_xy_px: int("t-cube-xy", 6),
       cube_z_layers: int("t-cube-z", 6),
       shell_px: int("t-shell", 1),
+      core_px: int("t-core", 0),
       boundary_px: int("t-boundary", 3),
       grey_value: int("t-grey", 128),
       white_value: int("t-white", 255),
+    };
+  } else if (mode === "triangular") {
+    config.grayscale.triangular_tessellation = {
+      cap_bottom_layers: int("tr-cap-b", 2),
+      cap_top_layers: int("tr-cap-t", 2),
+      tri_px: int("tr-tri", 10),
+      z_layers: int("tr-z", 6),
+      shell_px: int("tr-shell", 1),
+      core_px: int("tr-core", 0),
+      boundary_px: int("tr-boundary", 3),
+      grey_value: int("tr-grey", 128),
+      white_value: int("tr-white", 255),
     };
   }
   return config;
@@ -68,8 +81,14 @@ export function applyConfig(c) {
     const t = g.cubic_tessellation;
     setVal("t-cap-b", t.cap_bottom_layers); setVal("t-cap-t", t.cap_top_layers);
     setVal("t-cube-xy", t.cube_xy_px); setVal("t-cube-z", t.cube_z_layers); setVal("t-shell", t.shell_px);
-    setVal("t-boundary", t.boundary_px); setVal("t-grey", t.grey_value); setVal("t-white", t.white_value);
+    setVal("t-core", t.core_px); setVal("t-boundary", t.boundary_px); setVal("t-grey", t.grey_value); setVal("t-white", t.white_value);
     selectMode("cubic");
+  } else if (g.triangular_tessellation) {
+    const t = g.triangular_tessellation;
+    setVal("tr-cap-b", t.cap_bottom_layers); setVal("tr-cap-t", t.cap_top_layers);
+    setVal("tr-tri", t.tri_px); setVal("tr-z", t.z_layers); setVal("tr-shell", t.shell_px);
+    setVal("tr-core", t.core_px); setVal("tr-boundary", t.boundary_px); setVal("tr-grey", t.grey_value); setVal("tr-white", t.white_value);
+    selectMode("triangular");
   } else if (g.gradient) {
     setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);
     selectMode("gradient");
@@ -83,6 +102,6 @@ export function applyConfig(c) {
 
 // keep slider <output> labels in sync with their inputs
 export function updateOutputs() {
-  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"]];
+  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"]];
   pairs.forEach(([inp, out]) => { const o = $(out); if (o) o.textContent = $(inp).value; });
 }

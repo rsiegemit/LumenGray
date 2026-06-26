@@ -146,7 +146,25 @@ def main():
     assert all(v == 255 for v in strut_col), strut_col
     assert all(v == 128 for v in core_col), core_col
 
+    # --- triangular tessellation (shares the same base) + black core ---
+    from lumengray.config import default_triangular
+
+    tri = _replace(default_triangular(), core_px=3)
+    out_tri = os.path.join(work, "tri")
+    trisum = run(prism_path, out_tri, _replace(default_config(), triangulation=tri))
+    assert trisum["mode"] == "triangular_tessellation", trisum["mode"]
+    trifiles = sorted(os.listdir(out_tri))
+    # a frame layer (z_in=0 → idx 3) shows the triangular grid (white + grey, no black yet);
+    # a z-core interior layer carries the black void cores.
+    frame = np.array(Image.open(os.path.join(out_tri, trifiles[2])))  # layer 3
+    assert set(np.unique(frame).tolist()) == {0, 128, 255}, np.unique(frame)
+    core_layer = np.array(Image.open(os.path.join(out_tri, trifiles[4])))  # layer 5 (z_in=2, core band)
+    block = np.array(Image.open(os.path.join(out_tess, tfiles[4]))) > 0  # prism footprint
+    interior_black = int(((core_layer == 0) & block).sum())
+    assert interior_black > 0, "triangular black core produced no void inside the solid"
+
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
+    print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)
     print("cubic tessellation:", tsum["layers"], "layers | caps+edge-struts+rim verified | strut", strut_col, "core", core_col)
     print("sample output:", out_gray)
 

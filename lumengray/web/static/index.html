@@ -84,7 +84,8 @@
         <div class="segmented" id="mode-seg">
           <button data-mode="uniform" class="active">Uniform</button>
           <button data-mode="gradient">Gradient</button>
-          <button data-mode="cubic">Cubic tessellation</button>
+          <button data-mode="cubic">Cubic</button>
+          <button data-mode="triangular">Triangular</button>
         </div>
 
         <div class="mode-panel" data-panel="uniform">
@@ -113,12 +114,32 @@
             <label>Cube Z (layers)<input type="number" id="t-cube-z" value="6" min="1" step="1" /></label>
             <label>Shell (px)<input type="number" id="t-shell" value="1" min="1" step="1" /></label>
             <label>Boundary (px)<input type="number" id="t-boundary" value="3" min="0" step="1" /></label>
+            <label>Black core (px)<input type="number" id="t-core" value="0" min="0" step="1" /></label>
           </div>
           <label class="slider">Grey core <output id="o-grey">128</output>
             <input type="range" id="t-grey" min="0" max="255" value="128" />
           </label>
           <label class="slider">White value <output id="o-white">255</output>
             <input type="range" id="t-white" min="0" max="255" value="255" />
+          </label>
+        </div>
+
+        <div class="mode-panel" data-panel="triangular" hidden>
+          <p class="hint">Buckminster-Fuller-style triangular struts: white columns at the grid nodes + triangular frames, grey faces/core.</p>
+          <div class="grid2">
+            <label>Bottom caps<input type="number" id="tr-cap-b" value="2" min="0" step="1" /></label>
+            <label>Top caps<input type="number" id="tr-cap-t" value="2" min="0" step="1" /></label>
+            <label>Triangle (px)<input type="number" id="tr-tri" value="10" min="3" step="1" /></label>
+            <label>Frame Z (layers)<input type="number" id="tr-z" value="6" min="1" step="1" /></label>
+            <label>Strut (px)<input type="number" id="tr-shell" value="1" min="1" step="1" /></label>
+            <label>Boundary (px)<input type="number" id="tr-boundary" value="3" min="0" step="1" /></label>
+            <label>Black core (px)<input type="number" id="tr-core" value="0" min="0" step="1" /></label>
+          </div>
+          <label class="slider">Grey core <output id="o-trgrey">128</output>
+            <input type="range" id="tr-grey" min="0" max="255" value="128" />
+          </label>
+          <label class="slider">White value <output id="o-trwhite">255</output>
+            <input type="range" id="tr-white" min="0" max="255" value="255" />
           </label>
         </div>
       </section>

@@ -200,7 +200,11 @@ def create_app() -> FastAPI:
             "total_layers": count_layers(mesh, config.printer),
             "resolution": list(config.printer.resolution),
             "extents_mm": [round(v, 3) for v in extents],
-            "mode": "cubic_tessellation" if config.tessellation is not None else "regions",
+            "mode": (
+                "triangular_tessellation" if config.triangulation is not None
+                else "cubic_tessellation" if config.tessellation is not None
+                else "regions"
+            ),
         }
 
     @app.post("/api/preview")
