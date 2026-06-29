@@ -14,16 +14,21 @@ stack update live.
 
 ## Highlights
 
-- **One-click examples** — six built-in models (prism, cube, cylinder, sphere, torus, cone),
-  each pre-loaded with showcase parameters for a different grayscale mode.
+- **One-click examples** — six built-in models (prism, cube, cylinder, sphere, torus, cone)
+  with **editable dimensions** (the prism can drill an optional length-wise channel),
+  each pre-loaded with showcase parameters.
 - **Drag-and-drop any STL** — slices to a registered, fixed-canvas photostack.
-- **Three grayscale modes**
+- **Four grayscale modes**
   - **Uniform** — flat exposure for every cured pixel.
   - **Edge-feather gradient** — gray ramps from walls/holes into the core by distance.
-  - **Cubic tessellation** — a 3D infill of white cube-edge support columns (grey faces/core)
-    with solid-white caps and a per-layer white boundary rim.
-- **Live web studio** — upload, scrub the layer stack, orbit the model in 3D, export.
-- **Reproducible** — every run is fully described by one JSON config you can save and share.
+  - **Cubic tessellation** — white cube-edge support columns (grey faces/core), solid-white
+    caps, a per-layer white outer-wall rim, and an optional black-void core per cell.
+  - **Triangular tessellation** — a Buckminster-Fuller-style triangular strut lattice
+    (same base as cubic, with a triangular grid).
+- **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
+  (Mesh / Photostack / Volume / Wireframe), hover-tooltips on every parameter, export.
+- **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a
+  parameter-encoded zip name; every run is fully described by one JSON config.
 
 ![3D model view](docs/screenshot-3d.png)
 
@@ -45,9 +50,11 @@ download. Every push to GitHub auto-redeploys the latest code.
 
 Click the button → sign in to Render → **Apply**. In ~2 minutes you get a public
 URL (e.g. `https://lumengray.onrender.com`) running this repo, redeploying on
-every push (`render.yaml`). A `Dockerfile` is included for Fly.io / Hugging Face
-Spaces / Railway / Cloud Run too. (Render's free tier sleeps when idle and wakes
-on the next visit; the first hit after a nap takes a few seconds.)
+every push (`render.yaml`). The blueprint builds from the repo **`Dockerfile`**
+(Docker runtime) for a deterministic build, so the same image also runs on
+Fly.io / Hugging Face Spaces / Railway / Cloud Run. (Render's free tier sleeps
+when idle and wakes on the next visit; the first hit after a nap takes a few
+seconds, and it fits the 512 MB free tier.)
 
 ## The web studio (run locally)
 
@@ -57,18 +64,22 @@ lumengray-web               # opens http://127.0.0.1:8000 in your browser
 ```
 
 Upload an STL — or click an **Example** to load a built-in model with showcase parameters —
-pick a grayscale mode, drag the sliders, and the **Layer stack** preview re-slices live.
-Hit **Export stack (.zip)** for the full set of PNG masks plus a `manifest.json`.
+pick a grayscale mode, drag the sliders, and the **Layer stack** preview re-slices live
+(scroll-zoom + drag-pan). Hit **Export stack (.zip)** for the full set of PNG masks plus a
+`manifest.json`.
 
-The **3D model** tab has four views you can orbit:
+The **3D model** tab has four orbitable views:
 
 - **Mesh** — the input STL.
 - **Photostack** — the literal rendered layers stacked as thin slices.
 - **Volume** — a gap-free voxel solid at full height (each voxel tiles its layer slab), shaded by exposure.
-- **Lattice** — the cube-edge support cage as a wireframe (cubic-tessellation mode only).
+- **Wireframe** — the model drawn as edges, in white / gray / black.
+
+A **Cutaway** slider clips any view to see inside.
 
 ![Built-in examples](docs/screenshot-presets.png)
 ![3D volume view](docs/screenshot-volume.png)
+![3D wireframe view](docs/screenshot-wireframe.png)
 
 ## The CLI
 
@@ -115,28 +126,38 @@ print(summary["layers"], "masks written")
         "layers": [1, 20], "clip_to_solid": true }
     ],
 
-    "cubic_tessellation": {                      // OR the hollow-cube infill (overrides the above)
+    "cubic_tessellation": {                      // OR the hollow-cube strut infill
       "cap_bottom_layers": 2, "cap_top_layers": 2,
       "cube_xy_px": 6, "cube_z_layers": 6, "shell_px": 1,
+      "core_px": 0,                              // optional black-void cube per cell (0 = none)
       "boundary_px": 3, "grey_value": 128, "white_value": 255
+    },
+
+    "triangular_tessellation": {                 // OR the Buckminster-Fuller triangular lattice
+      "cap_bottom_layers": 2, "cap_top_layers": 2,
+      "tri_px": 10, "z_layers": 6, "shell_px": 1,
+      "core_px": 0, "boundary_px": 3, "grey_value": 128, "white_value": 255
     }
   }
 }
 ```
 
-### Cubic tessellation, in detail
+(Wireframe is a 3D *visualization*, not a grayscale mode, so it has no config block.)
 
-The model interior is tiled with cubes whose **edges** are white (`shell_px`-thick) —
-vertical support columns plus top/bottom frames — while the cube faces and core stay grey.
-The stack is capped with solid-white layers top and bottom, and every interior layer gets a
-pure-white boundary rim (solid pixels within `boundary_px` of an edge, L∞ / chessboard).
+### Tessellation, in detail
 
-Everything is reasoned about in **voxels** — one voxel is an output pixel in XY and one
-photostack layer in Z. With the Lumen X3's 35µm XY pixels and 50µm layers the voxels (and
-therefore the cubes) are deliberately *approximate*: a default 6-voxel cube is
-210 × 210 × 300 µm. Pixel/voxel counts are the source of truth. The lattice is anchored to
-the canvas in XY and to the first interior layer in Z, so the struts stack into continuous
-columns across the whole stack.
+A tessellation tiles the model interior with a strut lattice: white **support struts**
+(columns at the grid nodes, braced by horizontal frames every `z`/`cube_z_layers` layers),
+grey faces/core, solid-white caps top and bottom, and a white rim on the part's **outer
+wall** (solid pixels within `boundary_px` of an edge, L∞ / chessboard — internal channels are
+excluded). An optional **`core_px`** carves a black void in each cell's centre.
+
+Both kinds share one base (`tessellation._assemble`); a *kind* only supplies its XY grid —
+**cubic** uses a square grid (columns + rows), **triangular** uses three line families at
+60° (equilateral triangles). Everything is reasoned about in **voxels** — one voxel is an
+output pixel in XY and one photostack layer in Z — so at the Lumen X3's 35 µm XY / 50 µm Z
+the cells are deliberately *approximate*. Struts live on a single shared grid, so neighbours
+share edges/nodes instead of doubling them.
 
 ---
 
@@ -154,17 +175,25 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 |--------|------|
 | `slicer.py` | STL → registered binary layer masks (fixed world-space canvas) |
 | `grayscale.py` | uniform / gradient base fill + region overlay |
-| `tessellation.py` | cube-edge support-column 3D infill mode |
+| `tessellation.py` | shared tessellation base + the cubic kind |
+| `triangulation.py` | triangular (Fuller-style) kind, reusing the shared base |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
-| `config.py` | immutable, validated config (frozen dataclasses) |
-| `pipeline.py` | end-to-end run + the shared single-layer renderer |
-| `web/` | FastAPI backend + zero-build single-page UI |
+| `config.py` | immutable, validated config + `config_to_dict` serializer |
+| `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |
+| `web/` | FastAPI backend + zero-build ES-module SPA (core/api/config/viewer3d/app) |
+
+### Metadata & naming
+
+Every photostack includes a **`manifest.json`** recording what made it: the **source**
+(uploaded STL filename, or preset name + the dimensions used) and the **full grayscale mode +
+parameters**, plus printer/model settings, layer count, and a timestamp. The exported zip is
+named from those parameters, e.g. `Rectangular-prism_50um_cubic-xy6-z6-s1-b3_core2.zip`.
 
 ## Development
 
 ```bash
 pip install -e ".[web]"
-python smoke_test.py        # end-to-end: regions, gradient, rotation, cubic tessellation
+python smoke_test.py    # end-to-end: regions, gradient, rotation, cubic + triangular tessellation, manifest
 ```
 
 ## License
