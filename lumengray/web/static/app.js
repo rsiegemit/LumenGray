@@ -296,13 +296,20 @@ function wire() {
   document.querySelectorAll("#three-mode button").forEach((btn) => {
     btn.addEventListener("click", () => setThreeMode(btn.dataset.tmode));
   });
-  // wireframe colour (white / gray / black) → rebuild the wireframe view
-  document.querySelectorAll("#wf3d-color button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#wf3d-color button").forEach((b) => b.classList.toggle("active", b === btn));
+  // wireframe band controls (which exposure bands, cage/solid, thresholds) → rebuild the view
+  document.querySelectorAll("#wf3d-bands input").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      cb.closest("label").classList.toggle("on", cb.checked);
       refreshView();
     });
   });
+  document.querySelectorAll("#wf3d-style button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#wf3d-style button").forEach((b) => b.classList.toggle("active", b === btn));
+      refreshView();
+    });
+  });
+  ["wf3d-tlow", "wf3d-thigh"].forEach((id) => $(id).addEventListener("change", refreshView));
   $("clip-slider").addEventListener("input", applyClip);
 
   // 2D layer scrubber

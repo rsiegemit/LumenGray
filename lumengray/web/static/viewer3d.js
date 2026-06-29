@@ -1,7 +1,8 @@
 // 3D viewer: four orbitable views over the same model — Mesh (the STL),
 // Photostack (thin textured slices), Volume (gap-free voxel solid), and
-// Lattice (hollow-cube wireframe). three.js is imported lazily so a CDN hiccup
-// never breaks the core 2D viewer / export.
+// Wireframe (isolate the photostack's white/gray/black exposure bands as
+// cages or blocks). three.js is imported lazily so a CDN hiccup never breaks
+// the core 2D viewer / export.
 
 import { $, state } from "./core.js";
 import { buildConfig } from "./config.js";
@@ -178,30 +179,104 @@ async function makeVolume() {
   return { obj: group, h, radius, hint: `Volume · ${data.count.toLocaleString()} voxels${data.truncated ? " (capped)" : ""}` };
 }
 
-// Lattice: the hollow-cube cage as crisp box edges (cubic-tessellation only).
-// Boxes are shrunk slightly so neighbours don't merge — discrete hollow cubes.
-// Wireframe: the loaded mesh drawn as edges, in white / gray / black. Pure
-// client-side (uses the already-loaded geometry) — no backend call.
-const WF_COLORS = { white: 0xffffff, gray: 0x888888, black: 0x000000 };
+// Wireframe (band-isolation): split the photostack's exposure values into
+// white / gray / black bands and show any combination in 3D — each as a
+// see-through wireframe cage or as solid blocks. White is the high-exposure
+// geometry (e.g. tessellation struts/caps), gray the mid faces/core, black the
+// interior voids (carved core pockets). Two editable thresholds set the splits.
+const BAND_SHADE = { white: 0xffffff, gray: 0x8a8a8a, black: 0x4f7ad6 };
 
-async function makeWireframe() {
-  if (!three.mesh) throw new Error("load a model first");
-  const geo = three.mesh.geometry;
-  geo.computeBoundingBox();
-  const h = geo.boundingBox.max.z - geo.boundingBox.min.z;
-  const picked = document.querySelector("#wf3d-color button.active");
-  const color = WF_COLORS[picked ? picked.dataset.wf : "white"] ?? 0xffffff;
-  const lines = new THREE.LineSegments(
-    new THREE.WireframeGeometry(geo),
-    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }),
-  );
-  const group = new THREE.Group();
-  group.add(lines);
-  return { obj: group, h, radius: three.meshRadius || 10, hint: "Wireframe" };
+function bandControls() {
+  const bands = [...document.querySelectorAll("#wf3d-bands input:checked")].map((i) => i.value);
+  const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
+  const tLow = parseInt($("wf3d-tlow")?.value, 10) || 64;
+  const tHigh = parseInt($("wf3d-thigh")?.value, 10) || 192;
+  return { bands, style, tLow, tHigh };
 }
 
-// Force a rebuild of the current built view (e.g. the wireframe colour changed,
-// which isn't part of the config dedup key).
+function bandOf(v, tLow, tHigh) {
+  if (v < tLow) return "black";
+  if (v < tHigh) return "gray";
+  return "white";
+}
+
+// The 12 clean edges of a box (24 verts) as offsets from its centre — used to
+// draw each voxel as a crisp cube cage (no triangle diagonals), so internal
+// struts read as clear lines rather than a noisy triangulated shell.
+function boxEdges(sx, sy, sz) {
+  const a = sx / 2, b = sy / 2, c = sz / 2;
+  const C = [[-a, -b, -c], [a, -b, -c], [a, b, -c], [-a, b, -c], [-a, -b, c], [a, -b, c], [a, b, c], [-a, b, c]];
+  const E = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  const out = new Float32Array(E.length * 6);
+  E.forEach(([p, q], i) => { out.set(C[p], i * 6); out.set(C[q], i * 6 + 3); });
+  return out;
+}
+
+// Draw a band's voxels as merged cube-edge lines (one geometry, performant).
+function cageMesh(pts, sx, sy, sz, mx, my, hh, color) {
+  const edge = boxEdges(sx, sy, sz);
+  const n = edge.length; // 72 floats per voxel
+  const pos = new Float32Array(pts.length * n);
+  pts.forEach((v, i) => {
+    const ox = v[0] - mx, oy = v[1] - my, oz = v[2] - hh;
+    for (let k = 0; k < n; k += 3) {
+      pos[i * n + k] = edge[k] + ox;
+      pos[i * n + k + 1] = edge[k + 1] + oy;
+      pos[i * n + k + 2] = edge[k + 2] + oz;
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+}
+
+// Voxel fetches are cached by config + whether voids are included, so toggling
+// bands / style / thresholds re-filters client-side without hitting the server
+// (only flipping the black band, which needs voids, triggers a refetch).
+async function fetchVoxels(includeVoid) {
+  const cfg = buildConfig();
+  const key = JSON.stringify(cfg) + "|v" + (includeVoid ? 1 : 0);
+  if (three.voxCache && three.voxCache.key === key) return three.voxCache.data;
+  // peak: classify each voxel by its brightest pixel so thin white struts
+  // inside a mostly-grey cell still show up — keeps the internal lattice.
+  const data = await postJSON("/api/voxels", { id: state.id, config: cfg, include_void: includeVoid, peak: true });
+  three.voxCache = { key, data };
+  return data;
+}
+
+async function makeWireframe() {
+  const { bands, style, tLow, tHigh } = bandControls();
+  if (!bands.length) return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10, hint: "Pick a band — White / Gray / Black" };
+  const data = await fetchVoxels(bands.includes("black"));
+  const [sx, sy, sz] = data.voxel_size_mm;
+  const h = data.height_mm;
+  const vs = data.voxels;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  vs.forEach((v) => { xmin = Math.min(xmin, v[0]); xmax = Math.max(xmax, v[0]); ymin = Math.min(ymin, v[1]); ymax = Math.max(ymax, v[1]); });
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
+  const group = new THREE.Group();
+  const m = new THREE.Matrix4();
+  let shown = 0;
+  bands.forEach((band) => {
+    const pts = vs.filter((v) => bandOf(v[3], tLow, tHigh) === band);
+    if (!pts.length) return;
+    shown += pts.length;
+    if (style === "cage") {
+      group.add(cageMesh(pts, sx, sy, sz, mx, my, h / 2, BAND_SHADE[band]));
+    } else {
+      const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshLambertMaterial({ color: BAND_SHADE[band] }), pts.length);
+      pts.forEach((v, i) => inst.setMatrixAt(i, m.makeTranslation(v[0] - mx, v[1] - my, v[2] - h / 2)));
+      inst.instanceMatrix.needsUpdate = true;
+      group.add(inst);
+    }
+  });
+  const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
+  const hint = `Bands · ${bands.join("+")} · ${shown.toLocaleString()} voxels${data.truncated ? " (capped)" : ""}`;
+  return { obj: group, h, radius, hint };
+}
+
+// Force a rebuild of the current built view (e.g. a band control changed, which
+// isn't part of the config dedup key).
 export function refreshView() {
   if (three && three.mode !== "mesh" && state.id) {
     three.stackKey = null;
@@ -210,7 +285,7 @@ export function refreshView() {
 }
 
 const VIEW_BUILDERS = { stack: makeSlices, volume: makeVolume, wireframe: makeWireframe };
-const VIEW_BUSY = { stack: "Building photostack…", volume: "Building volume…", wireframe: "Building wireframe…" };
+const VIEW_BUSY = { stack: "Building photostack…", volume: "Building volume…", wireframe: "Isolating exposure bands…" };
 
 export async function buildView(mode) {
   if (!state.id || !three) return;
@@ -243,8 +318,8 @@ export async function buildView(mode) {
 
 export async function setThreeMode(mode) {
   document.querySelectorAll("#three-mode button").forEach((b) => b.classList.toggle("active", b.dataset.tmode === mode));
-  const colorSel = $("wf3d-color");
-  if (colorSel) colorSel.hidden = mode !== "wireframe";
+  const panel = $("wf3d-panel");
+  if (panel) panel.hidden = mode !== "wireframe";
   if (!(await loadThreeLibs())) return;
   try { if (!three) initThree(); } catch (e) { return; }
   three.mode = mode;

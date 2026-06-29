@@ -73,7 +73,12 @@ The **3D model** tab has four orbitable views:
 - **Mesh** — the input STL.
 - **Photostack** — the literal rendered layers stacked as thin slices.
 - **Volume** — a gap-free voxel solid at full height (each voxel tiles its layer slab), shaded by exposure.
-- **Wireframe** — the model drawn as edges, in white / gray / black.
+- **Wireframe** — isolate the photostack's exposure **bands** in 3D. Toggle any
+  combination of **white** (high exposure — struts/caps/rim), **gray** (mid —
+  faces/core), and **black** (interior voids — the carved core pockets), drawn as
+  a see-through **cage** or **solid** blocks. Two editable thresholds set the
+  white/gray/black splits. Each voxel is classified by its brightest pixel, so
+  thin white struts stay visible instead of averaging away.
 
 A **Cutaway** slider clips any view to see inside.
 

@@ -189,12 +189,24 @@
               <button data-tmode="mesh" class="active" title="The input STL mesh.">Mesh</button>
               <button data-tmode="stack" title="The rendered layers stacked as thin slices.">Photostack</button>
               <button data-tmode="volume" title="A gap-free voxel solid at full height, shaded by exposure.">Volume</button>
-              <button data-tmode="wireframe" title="The model drawn as a wireframe.">Wireframe</button>
+              <button data-tmode="wireframe" title="Isolate the photostack's exposure bands in 3D — white / gray / black.">Wireframe</button>
             </div>
-            <div class="segmented small" id="wf3d-color" hidden>
-              <button data-wf="white" class="active" title="White wireframe.">White</button>
-              <button data-wf="gray" title="Grey wireframe.">Gray</button>
-              <button data-wf="black" title="Black wireframe.">Black</button>
+            <div class="wf-panel" id="wf3d-panel" hidden>
+              <div class="wf-bands" id="wf3d-bands" title="Which exposure bands of the photostack to show in 3D. Combine any.">
+                <label class="on"><input type="checkbox" value="white" checked />White</label>
+                <label class="on"><input type="checkbox" value="gray" checked />Gray</label>
+                <label><input type="checkbox" value="black" />Black</label>
+              </div>
+              <div class="segmented small" id="wf3d-style" title="Draw each band as a see-through wireframe cage or as solid blocks.">
+                <button data-style="cage" class="active" title="Wireframe edges (see-through).">Cage</button>
+                <button data-style="solid" title="Solid shaded blocks.">Solid</button>
+              </div>
+              <label class="wf-thresh" title="Values below this are the black (void) band.">
+                Gray&nbsp;≥<input type="number" id="wf3d-tlow" min="1" max="254" value="64" />
+              </label>
+              <label class="wf-thresh" title="Values at or above this are the white band.">
+                White&nbsp;≥<input type="number" id="wf3d-thigh" min="2" max="255" value="192" />
+              </label>
             </div>
             <label class="cutaway" title="Slice away part of the model to see inside">
               Cutaway

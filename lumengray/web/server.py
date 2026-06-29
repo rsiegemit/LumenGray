@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import trimesh
+from scipy import ndimage
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -78,6 +79,8 @@ class VoxelRequest(BaseModel):
     config: dict
     target: int = 72  # ~voxels along the longest axis
     max_voxels: int = 90000
+    include_void: bool = False  # also emit interior void voxels (value 0) for the black band
+    peak: bool = False  # report each voxel's max exposure (band view) instead of the mean (volume)
 
 
 
@@ -343,28 +346,72 @@ def create_app() -> FastAPI:
         fxy = max(1, round(voxel_mm / pixel_mm))
         fz = max(1, round(voxel_mm / layer_mm))
         ncx, ncy, nz = -(-crop_w // fxy), -(-crop_h // fxy), -(-total // fz)
+        if req.peak:
+            # The band view is rendered as a wireframe, so striding the voxel list
+            # (the sampler's memory cap) aliases with the row-major grid and punches
+            # axis-aligned gaps. Coarsen until the whole grid fits under the cap so
+            # nothing is dropped — bigger voxels, but gapless and still bounded.
+            while ncx * ncy * nz > req.max_voxels:
+                fxy += 1
+                fz += 1
+                ncx, ncy, nz = -(-crop_w // fxy), -(-crop_h // fxy), -(-total // fz)
 
         sampler = _BoundedSampler(req.max_voxels)
         for kz in range(nz):
-            idx = min(total, kz * fz + fz // 2 + 1)  # center layer of the slab → fills the height
-            layer = render_layer(slice_index(mesh, config.printer, config.center_xy, idx), idx, total, config, regions, pixel_mm)
-            crop = layer[r0:r1, c0:c1].astype(np.float32)
-            del layer
+            if req.peak:
+                # Band view: collapse every layer in this Z-slab (elementwise max)
+                # so thin frames/columns at any depth survive — keeps the lattice
+                # connected through the height instead of sampling one center layer.
+                lo = kz * fz
+                hi = min(total, lo + fz)
+                crop = None
+                for li in range(lo, hi):
+                    idx = li + 1
+                    layer = render_layer(slice_index(mesh, config.printer, config.center_xy, idx), idx, total, config, regions, pixel_mm)
+                    sub = layer[r0:r1, c0:c1]
+                    crop = sub.astype(np.float32) if crop is None else np.maximum(crop, sub)
+                    del layer, sub
+            else:
+                idx = min(total, kz * fz + fz // 2 + 1)  # center layer of the slab → fills the height
+                layer = render_layer(slice_index(mesh, config.printer, config.center_xy, idx), idx, total, config, regions, pixel_mm)
+                crop = layer[r0:r1, c0:c1].astype(np.float32)
+                del layer
             padded = np.zeros((ncy * fxy, ncx * fxy), dtype=np.float32)
             padded[:crop_h, :crop_w] = crop
             del crop
             blocks = padded.reshape(ncy, fxy, ncx, fxy)
             solid = blocks > 0
             count = solid.sum(axis=(1, 3))
-            mean = np.where(count > 0, blocks.sum(axis=(1, 3)) / np.maximum(count, 1), 0)
+            # Volume shading wants the mean exposure; the band view wants the peak
+            # so a thin white strut in a mostly-grey cell still reads as white
+            # ("anywhere the photostack yields white"), not averaged away.
+            if req.peak:
+                value = blocks.max(axis=(1, 3))
+            else:
+                value = np.where(count > 0, blocks.sum(axis=(1, 3)) / np.maximum(count, 1), 0)
+            # Interior voids: 0-pixels enclosed by solid (the carved core pockets),
+            # excluding the empty exterior. A block counts as void if it is mostly
+            # enclosed-void and has no cured pixels.
+            if req.include_void:
+                solid_px = padded > 0
+                void_px = ndimage.binary_fill_holes(solid_px) & ~solid_px
+                void_count = void_px.reshape(ncy, fxy, ncx, fxy).sum(axis=(1, 3))
+                del solid_px, void_px
             del padded, blocks, solid
             z_mm = (kz * fz + fz / 2.0) * layer_mm
             rows, cols = np.where(count > 0)
             for cy, cx in zip(rows, cols):
                 x_mm = (c0 + cx * fxy + fxy / 2.0) * pixel_mm
                 y_mm = (height - 1 - (r0 + cy * fxy + fxy / 2.0)) * pixel_mm
-                sampler.add([round(float(x_mm), 3), round(float(y_mm), 3), round(float(z_mm), 3), int(mean[cy, cx])])
-            del count, mean, rows, cols
+                sampler.add([round(float(x_mm), 3), round(float(y_mm), 3), round(float(z_mm), 3), int(value[cy, cx])])
+            if req.include_void:
+                vrows, vcols = np.where((count == 0) & (void_count > (fxy * fxy) // 2))
+                for cy, cx in zip(vrows, vcols):
+                    x_mm = (c0 + cx * fxy + fxy / 2.0) * pixel_mm
+                    y_mm = (height - 1 - (r0 + cy * fxy + fxy / 2.0)) * pixel_mm
+                    sampler.add([round(float(x_mm), 3), round(float(y_mm), 3), round(float(z_mm), 3), 0])
+                del void_count, vrows, vcols
+            del count, value, rows, cols
 
         gc.collect()
         truncated = sampler.total > req.max_voxels
