@@ -85,7 +85,8 @@
           <button data-mode="uniform" class="active" title="Every cured pixel gets the same exposure.">Uniform</button>
           <button data-mode="gradient" title="Exposure ramps from the edges into the core (anti-aliased walls).">Gradient</button>
           <button data-mode="cubic" title="Hollow-cube strut lattice infill (white edges, grey faces/core).">Cubic</button>
-          <button data-mode="triangular" title="Buckminster-Fuller-style triangular strut lattice infill.">Triangular</button>
+          <button data-mode="triangular" title="Triangular prisms: vertical columns + flat triangular frames (no sloped struts).">Triangular Prisms</button>
+          <button data-mode="octet" title="Octet truss: Buckminster-Fuller's space-filling tetrahedra + octahedra (sloped struts → true 3D pyramids).">Octet</button>
         </div>
 
         <div class="mode-panel" data-panel="uniform">
@@ -125,7 +126,7 @@
         </div>
 
         <div class="mode-panel" data-panel="triangular" hidden>
-          <p class="hint">Buckminster-Fuller-style triangular struts: white columns at the grid nodes + triangular frames, grey faces/core.</p>
+          <p class="hint">Triangular <em>prisms</em>: white columns at the grid nodes + flat triangular frames, grey faces/core. (For sloped 3D pyramids use Octet.)</p>
           <div class="grid2">
             <label title="Number of fully-solid white layers at the bottom of the stack.">Bottom caps<input type="number" id="tr-cap-b" value="2" min="0" step="1" /></label>
             <label title="Number of fully-solid white layers at the top of the stack.">Top caps<input type="number" id="tr-cap-t" value="2" min="0" step="1" /></label>
@@ -140,6 +141,24 @@
           </label>
           <label class="slider" title="Exposure for struts, the rim, and the caps.">White value <output id="o-trwhite">255</output>
             <input type="range" id="tr-white" min="0" max="255" value="255" />
+          </label>
+        </div>
+
+        <div class="mode-panel" data-panel="octet" hidden>
+          <p class="hint">Octet truss — space-filling tetrahedra + octahedra (Fuller's octetruss): sloped struts between layers form true 3D pyramids; grey faces/core.</p>
+          <div class="grid2">
+            <label title="Number of fully-solid white layers at the bottom of the stack.">Bottom caps<input type="number" id="oc-cap-b" value="2" min="0" step="1" /></label>
+            <label title="Number of fully-solid white layers at the top of the stack.">Top caps<input type="number" id="oc-cap-t" value="2" min="0" step="1" /></label>
+            <label title="FCC cube-cell edge across XY, in pixels (node spacing is half this).">Cell XY (px)<input type="number" id="oc-cell-xy" value="14" min="2" step="1" /></label>
+            <label title="FCC cube-cell edge in Z, in layers (node spacing is half this).">Cell Z (layers)<input type="number" id="oc-cell-z" value="10" min="2" step="1" /></label>
+            <label title="Strut radius, in voxels.">Strut (px)<input type="number" id="oc-strut" value="1" min="1" step="1" /></label>
+            <label title="White rim on the outer wall: solid within this many px of the edge (0 = none).">Boundary (px)<input type="number" id="oc-boundary" value="3" min="0" step="1" /></label>
+          </div>
+          <label class="slider" title="Exposure for the truss faces/core (the grey fill).">Grey core <output id="o-ocgrey">128</output>
+            <input type="range" id="oc-grey" min="0" max="255" value="128" />
+          </label>
+          <label class="slider" title="Exposure for struts, the rim, and the caps.">White value <output id="o-ocwhite">255</output>
+            <input type="range" id="oc-white" min="0" max="255" value="255" />
           </label>
         </div>
       </section>
@@ -188,8 +207,7 @@
             <div class="segmented small" id="three-mode">
               <button data-tmode="mesh" class="active" title="The input STL mesh.">Mesh</button>
               <button data-tmode="stack" title="The rendered layers stacked as thin slices.">Photostack</button>
-              <button data-tmode="volume" title="A gap-free voxel solid at full height, shaded by exposure.">Volume</button>
-              <button data-tmode="wireframe" title="Isolate the photostack's exposure bands in 3D — white / gray / black.">Wireframe</button>
+              <button data-tmode="wireframe" title="The print's 3D structure — strut cage for tessellations, exposure bands otherwise.">Wireframe</button>
             </div>
             <div class="wf-panel" id="wf3d-panel" hidden>
               <div class="segmented small" id="wf3d-style" title="Tessellation: Cage = procedural strut edges (the lattice); Solid = filled voxel body. Other modes: see-through wireframe vs solid blocks.">

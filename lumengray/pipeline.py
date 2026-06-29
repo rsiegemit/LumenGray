@@ -17,6 +17,7 @@ from .geometry import shape_to_pixels
 from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
+from .octet import octet_layer
 from .tessellation import tessellation_layer
 from .triangulation import triangulation_layer
 
@@ -70,7 +71,8 @@ def run(
         "rotation_deg": config.rotation_deg,
         "out_dir": out_dir,
         "mode": (
-            "triangular_tessellation" if config.triangulation is not None
+            "octet_tessellation" if config.octet is not None
+            else "triangular_tessellation" if config.triangulation is not None
             else "cubic_tessellation" if config.tessellation is not None
             else "regions"
         ),
@@ -99,7 +101,10 @@ def _source_stem(source: dict | None, stl_path: str) -> str:
 def stack_basename(config: Config, stem: str) -> str:
     """A descriptive, filesystem-safe name encoding the source + grayscale parameters."""
     parts = [_slug(stem) or "photostack", f"{config.printer.layer_height_um:g}um"]
-    if config.triangulation is not None:
+    if config.octet is not None:
+        o = config.octet
+        parts.append(f"octet-xy{o.cell_xy_px}-z{o.cell_z_layers}-s{o.strut_px}-b{o.boundary_px}")
+    elif config.triangulation is not None:
         t = config.triangulation
         parts.append(f"tri-t{t.tri_px}-z{t.z_layers}-s{t.shell_px}-b{t.boundary_px}")
         if t.core_px:
@@ -142,6 +147,8 @@ def _write_manifest(out_dir, config, summary, source, stl_path) -> None:
 
 def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     """Build one uint8 grayscale layer. Shared by the full run and the live preview."""
+    if config.octet is not None:
+        return octet_layer(solid, index, total_layers, config.octet)
     if config.triangulation is not None:
         return triangulation_layer(solid, index, total_layers, config.triangulation)
     if config.tessellation is not None:

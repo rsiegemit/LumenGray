@@ -57,6 +57,17 @@ export function buildConfig() {
       grey_value: int("tr-grey", 128),
       white_value: int("tr-white", 255),
     };
+  } else if (mode === "octet") {
+    config.grayscale.octet_tessellation = {
+      cap_bottom_layers: int("oc-cap-b", 2),
+      cap_top_layers: int("oc-cap-t", 2),
+      cell_xy_px: int("oc-cell-xy", 14),
+      cell_z_layers: int("oc-cell-z", 10),
+      strut_px: int("oc-strut", 1),
+      boundary_px: int("oc-boundary", 3),
+      grey_value: int("oc-grey", 128),
+      white_value: int("oc-white", 255),
+    };
   }
   return config;
 }
@@ -89,6 +100,12 @@ export function applyConfig(c) {
     setVal("tr-tri", t.tri_px); setVal("tr-z", t.z_layers); setVal("tr-shell", t.shell_px);
     setVal("tr-core", t.core_px); setVal("tr-boundary", t.boundary_px); setVal("tr-grey", t.grey_value); setVal("tr-white", t.white_value);
     selectMode("triangular");
+  } else if (g.octet_tessellation) {
+    const t = g.octet_tessellation;
+    setVal("oc-cap-b", t.cap_bottom_layers); setVal("oc-cap-t", t.cap_top_layers);
+    setVal("oc-cell-xy", t.cell_xy_px); setVal("oc-cell-z", t.cell_z_layers); setVal("oc-strut", t.strut_px);
+    setVal("oc-boundary", t.boundary_px); setVal("oc-grey", t.grey_value); setVal("oc-white", t.white_value);
+    selectMode("octet");
   } else if (g.gradient) {
     setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);
     selectMode("gradient");
@@ -102,6 +119,6 @@ export function applyConfig(c) {
 
 // keep slider <output> labels in sync with their inputs
 export function updateOutputs() {
-  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"]];
+  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"]];
   pairs.forEach(([inp, out]) => { const o = $(out); if (o) o.textContent = $(inp).value; });
 }

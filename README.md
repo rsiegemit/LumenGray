@@ -18,15 +18,19 @@ stack update live.
   with **editable dimensions** (the prism can drill an optional length-wise channel),
   each pre-loaded with showcase parameters.
 - **Drag-and-drop any STL** — slices to a registered, fixed-canvas photostack.
-- **Four grayscale modes**
+- **Five grayscale modes**
   - **Uniform** — flat exposure for every cured pixel.
   - **Edge-feather gradient** — gray ramps from walls/holes into the core by distance.
   - **Cubic tessellation** — white cube-edge support columns (grey faces/core), solid-white
     caps, a per-layer white outer-wall rim, and an optional black-void core per cell.
-  - **Triangular tessellation** — a Buckminster-Fuller-style triangular strut lattice
-    (same base as cubic, with a triangular grid).
+  - **Triangular prisms** — vertical strut columns + flat triangular frames (a triangular
+    grid extruded in Z; no sloped struts).
+  - **Octet truss** — Buckminster-Fuller's space-filling **tetrahedra + octahedra** (the FCC
+    strut lattice): sloped struts run diagonally between layers, so the cells are true 3D
+    pyramids. Defined by its strut segments — a voxel is white when within the strut radius
+    of one — so the printed photostack and the 3D cage are one geometry.
 - **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
-  (Mesh / Photostack / Volume / Wireframe), hover-tooltips on every parameter, export.
+  (Mesh / Photostack / Wireframe), hover-tooltips on every parameter, export.
 - **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a
   parameter-encoded zip name; every run is fully described by one JSON config.
 
@@ -68,19 +72,17 @@ pick a grayscale mode, drag the sliders, and the **Layer stack** preview re-slic
 (scroll-zoom + drag-pan). Hit **Export stack (.zip)** for the full set of PNG masks plus a
 `manifest.json`.
 
-The **3D model** tab has four orbitable views:
+The **3D model** tab has three orbitable views:
 
 - **Mesh** — the input STL.
 - **Photostack** — the literal rendered layers stacked as thin slices.
-- **Volume** — a gap-free voxel solid at full height (each voxel tiles its layer slab), shaded by exposure.
 - **Wireframe** —
-  - For **tessellation** modes (cubic / triangular): a **Cage** draws the actual
-    strut lattice — the vertical columns and the square/triangular frame edges —
-    as crisp 3D lines computed from the parameters and clipped per layer (each
-    frame to its own slice silhouette, columns only where the part is) so it
-    follows curved shapes — letting you see the real triangle/cube structure the
-    voxel grid is too coarse to resolve.
-    **Solid** fills it as a voxel body instead.
+  - For **tessellation** modes (cubic / triangular prisms / octet): a **Cage** draws the
+    actual strut lattice — columns + square/triangular frame edges, or the octet's
+    sloped tetrahedra struts — as crisp 3D lines computed from the parameters and
+    clipped per layer (each frame to its own slice silhouette, struts only where the
+    part is) so it follows curved shapes — letting you see the real structure the voxel
+    grid is too coarse to resolve. **Solid** fills it as a voxel body instead.
   - For **uniform / gradient** modes: isolate the photostack's exposure **bands** —
     toggle any combination of **white** (high exposure), **gray** (mid), and
     **black** (interior voids), as a see-through cage or solid blocks, with two
@@ -145,10 +147,16 @@ print(summary["layers"], "masks written")
       "boundary_px": 3, "grey_value": 128, "white_value": 255
     },
 
-    "triangular_tessellation": {                 // OR the Buckminster-Fuller triangular lattice
+    "triangular_tessellation": {                 // OR triangular prisms (columns + flat frames)
       "cap_bottom_layers": 2, "cap_top_layers": 2,
       "tri_px": 10, "z_layers": 6, "shell_px": 1,
       "core_px": 0, "boundary_px": 3, "grey_value": 128, "white_value": 255
+    },
+
+    "octet_tessellation": {                      // OR the octet truss (Fuller tetrahedra+octahedra)
+      "cap_bottom_layers": 2, "cap_top_layers": 2,
+      "cell_xy_px": 14, "cell_z_layers": 10,     // FCC cube-cell edge (node spacing = half)
+      "strut_px": 1, "boundary_px": 3, "grey_value": 128, "white_value": 255
     }
   }
 }
@@ -188,7 +196,8 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 | `slicer.py` | STL → registered binary layer masks (fixed world-space canvas) |
 | `grayscale.py` | uniform / gradient base fill + region overlay |
 | `tessellation.py` | shared tessellation base + the cubic kind |
-| `triangulation.py` | triangular (Fuller-style) kind, reusing the shared base |
+| `triangulation.py` | triangular-prism kind, reusing the shared base |
+| `octet.py` | octet truss (Fuller tetrahedra+octahedra): strut generator + per-layer voxelizer |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + `config_to_dict` serializer |
 | `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |

@@ -47,6 +47,18 @@ DEFAULT_TRIANGULAR = {
     "white_value": 255,
 }
 
+# Octet-truss (Fuller octetruss) tessellation defaults (voxel counts).
+DEFAULT_OCTET = {
+    "cap_bottom_layers": 2,
+    "cap_top_layers": 2,
+    "cell_xy_px": 14,  # FCC cube-cell edge in XY pixels (node spacing = half)
+    "cell_z_layers": 10,  # FCC cube-cell edge in Z layers (node spacing = half)
+    "strut_px": 1,
+    "boundary_px": 3,
+    "grey_value": 128,
+    "white_value": 255,
+}
+
 
 class ConfigError(ValueError):
     """Raised when a config file is malformed."""
@@ -118,6 +130,22 @@ class TriangularTessellation:
 
 
 @dataclass(frozen=True)
+class OctetTessellation:
+    """Octet-truss infill — space-filling tetrahedra + octahedra (FCC strut
+    lattice). Sloped struts between layers make true 3D pyramids, unlike the
+    triangular *prism* mode. Reasoned about in voxels (XY pixel, Z layer)."""
+
+    cap_bottom_layers: int  # solid-white layers at the bottom
+    cap_top_layers: int  # solid-white layers at the top
+    cell_xy_px: int  # FCC cube-cell edge in XY pixels (node spacing = half this)
+    cell_z_layers: int  # FCC cube-cell edge in Z layers (node spacing = half this)
+    strut_px: int  # white strut radius (voxels)
+    boundary_px: int  # per-layer white rim: solid within this many px (L-inf) of an edge
+    grey_value: int  # fill for the truss faces / core
+    white_value: int  # fill for struts, rim, and caps
+
+
+@dataclass(frozen=True)
 class Config:
     printer: Printer
     default_solid_value: int  # fill value for cured pixels (255 = full exposure)
@@ -127,6 +155,7 @@ class Config:
     regions: tuple
     tessellation: CubicTessellation | None  # hollow-cube infill; overrides gradient+regions
     triangulation: TriangularTessellation | None  # triangular strut infill; overrides the above
+    octet: OctetTessellation | None  # octet-truss infill; overrides the above
 
 
 def default_config() -> Config:
@@ -140,6 +169,7 @@ def default_config() -> Config:
         regions=(),
         tessellation=None,
         triangulation=None,
+        octet=None,
     )
 
 
@@ -151,6 +181,11 @@ def default_tessellation() -> CubicTessellation:
 def default_triangular() -> TriangularTessellation:
     """The default triangular strut infill (matches DEFAULT_TRIANGULAR)."""
     return TriangularTessellation(**DEFAULT_TRIANGULAR)
+
+
+def default_octet() -> OctetTessellation:
+    """The default octet-truss infill (matches DEFAULT_OCTET)."""
+    return OctetTessellation(**DEFAULT_OCTET)
 
 
 def load_config(path: str) -> Config:
@@ -177,7 +212,9 @@ def config_from_dict(raw: dict) -> Config:
 def config_to_dict(config: Config) -> dict:
     """Serialize a validated Config back to the public schema (the values actually used)."""
     grayscale: dict = {}
-    if config.triangulation is not None:
+    if config.octet is not None:
+        grayscale["octet_tessellation"] = asdict(config.octet)
+    elif config.triangulation is not None:
         grayscale["triangular_tessellation"] = asdict(config.triangulation)
     elif config.tessellation is not None:
         grayscale["cubic_tessellation"] = asdict(config.tessellation)
@@ -216,11 +253,12 @@ def _build_config(raw: dict) -> Config:
     )
     tessellation = _build_tessellation(grayscale.get("cubic_tessellation"))
     triangulation = _build_triangular(grayscale.get("triangular_tessellation"))
+    octet = _build_octet(grayscale.get("octet_tessellation"))
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
     return Config(
-        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation
+        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation, octet
     )
 
 
@@ -336,6 +374,42 @@ def _build_triangular(raw) -> TriangularTessellation | None:
         z_layers=z_layers,
         shell_px=shell,
         core_px=_int("core_px", 0),
+        boundary_px=_int("boundary_px", 0),
+        grey_value=grey,
+        white_value=white,
+    )
+
+
+def _build_octet(raw) -> OctetTessellation | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("'grayscale.octet_tessellation' must be an object")
+    if raw.get("enabled") is False:
+        return None
+
+    def _int(key: str, minimum: int) -> int:
+        value = raw.get(key, DEFAULT_OCTET[key])
+        if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+            raise ConfigError(f"grayscale.octet_tessellation.{key} must be an integer >= {minimum}")
+        return value
+
+    cell_xy = _int("cell_xy_px", 2)
+    cell_z = _int("cell_z_layers", 2)
+    strut = _int("strut_px", 1)
+    if 2 * strut >= min(cell_xy, cell_z):
+        raise ConfigError(
+            "grayscale.octet_tessellation.strut_px too large: leaves no grey core "
+            "(need 2*strut_px < cell_xy_px and < cell_z_layers)"
+        )
+    grey = _validate_value(raw.get("grey_value", DEFAULT_OCTET["grey_value"]), "grayscale.octet_tessellation.grey_value")
+    white = _validate_value(raw.get("white_value", DEFAULT_OCTET["white_value"]), "grayscale.octet_tessellation.white_value")
+    return OctetTessellation(
+        cap_bottom_layers=_int("cap_bottom_layers", 0),
+        cap_top_layers=_int("cap_top_layers", 0),
+        cell_xy_px=cell_xy,
+        cell_z_layers=cell_z,
+        strut_px=strut,
         boundary_px=_int("boundary_px", 0),
         grey_value=grey,
         white_value=white,

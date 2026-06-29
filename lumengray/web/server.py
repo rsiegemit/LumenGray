@@ -29,6 +29,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from ..config import ConfigError, config_from_dict
+from ..octet import octet_struts
 from ..pipeline import render_layer, resolve_regions, run
 from ..preview import sample_indices
 from ..slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
@@ -440,8 +441,8 @@ def create_app() -> FastAPI:
         resolve. Returns [] for non-tessellation modes."""
         item = _get(req.id)
         config = _config(req.config)
-        cub, tri = config.tessellation, config.triangulation
-        if cub is None and tri is None:
+        cub, tri, oct = config.tessellation, config.triangulation, config.octet
+        if cub is None and tri is None and oct is None:
             return {"segments": [], "kind": None, "height_mm": 0.0, "count": 0, "truncated": False}
 
         mesh = _oriented(item, config)
@@ -463,6 +464,40 @@ def create_app() -> FastAPI:
         def solid_at(mask, col, row):
             r, c = int(round(row)), int(round(col))
             return 0 <= r < mask.shape[0] and 0 <= c < mask.shape[1] and bool(mask[r, c])
+
+        if oct is not None:
+            # Octet truss: the actual sloped strut segments (same as the print),
+            # clipped to the part by checking each endpoint against its node-plane
+            # silhouette. z = 0 at the first interior layer.
+            hx, hz = oct.cell_xy_px / 2.0, oct.cell_z_layers / 2.0
+            lo, hi = oct.cap_bottom_layers + 1, total - oct.cap_top_layers
+            zspan = max(0, hi - lo)
+            kmax = int(zspan / hz) + 1
+            masks = {}
+            for k in range(-1, kmax + 2):
+                L = int(round(lo + k * hz))
+                if 1 <= L <= total:
+                    masks[k] = slice_index(mesh, config.printer, config.center_xy, L)
+
+            def node_solid(col, row, zrel):
+                m = masks.get(int(round(zrel / hz)))
+                return m is not None and solid_at(m, col, row)
+
+            segs = []
+            for ax, ay, az, bx, by, bz in octet_struts(c0, r0, c1, r1, 0, zspan, hx, hz):
+                if node_solid(ax, ay, az) and node_solid(bx, by, bz):
+                    za = (lo - 0.5 + az) * layer_mm
+                    zb = (lo - 0.5 + bz) * layer_mm
+                    segs.append(to_mm(ax, ay, za) + to_mm(bx, by, zb))
+                    if len(segs) > req.max_segments:
+                        break
+            return {
+                "segments": segs[: req.max_segments],
+                "kind": "octet",
+                "height_mm": round(height_mm, 4),
+                "count": min(len(segs), req.max_segments),
+                "truncated": len(segs) > req.max_segments,
+            }
 
         if cub is not None:
             kind, p, period = "cubic", cub.cube_xy_px, cub.cube_z_layers

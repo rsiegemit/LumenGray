@@ -155,30 +155,6 @@ async function makeSlices() {
   return { obj: group, h, radius: Math.max(data.plane_w_mm, data.plane_h_mm, h) * 0.8, hint: `Photostack · ${data.count} of ${data.total_layers} layers` };
 }
 
-// Volume: a gap-free voxel solid (full height), shaded by exposure value.
-async function makeVolume() {
-  const data = await postJSON("/api/voxels", { id: state.id, config: buildConfig() });
-  const [sx, sy, sz] = data.voxel_size_mm;
-  const h = data.height_mm;
-  const vs = data.voxels;
-  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-  vs.forEach((v) => { xmin = Math.min(xmin, v[0]); xmax = Math.max(xmax, v[0]); ymin = Math.min(ymin, v[1]); ymax = Math.max(ymax, v[1]); });
-  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
-  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshLambertMaterial(), vs.length);
-  const m = new THREE.Matrix4(), col = new THREE.Color();
-  vs.forEach((v, i) => {
-    inst.setMatrixAt(i, m.makeTranslation(v[0] - mx, v[1] - my, v[2] - h / 2));
-    const g = Math.max(0.06, v[3] / 255); // exposure → grayscale; floor so cores stay visible
-    inst.setColorAt(i, col.setRGB(g, g, g));
-  });
-  inst.instanceMatrix.needsUpdate = true;
-  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-  const group = new THREE.Group();
-  group.add(inst);
-  const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
-  return { obj: group, h, radius, hint: `Volume · ${data.count.toLocaleString()} voxels${data.truncated ? " (capped)" : ""}` };
-}
-
 // Wireframe (band-isolation): split the photostack's exposure values into
 // white / gray / black bands and show any combination in 3D — each as a
 // see-through wireframe cage or as solid blocks. White is the high-exposure
@@ -201,7 +177,9 @@ function bandControls() {
 // Which tessellation lattice (if any) the current config describes.
 function wfKind() {
   const g = buildConfig().grayscale;
-  return g.triangular_tessellation ? "triangular" : g.cubic_tessellation ? "cubic" : null;
+  return g.octet_tessellation ? "octet"
+    : g.triangular_tessellation ? "triangular"
+    : g.cubic_tessellation ? "cubic" : null;
 }
 
 // Show/hide the exposure-band picker: tessellation modes use the procedural
@@ -336,8 +314,8 @@ export function refreshView() {
   }
 }
 
-const VIEW_BUILDERS = { stack: makeSlices, volume: makeVolume, wireframe: makeWireframe };
-const VIEW_BUSY = { stack: "Building photostack…", volume: "Building volume…", wireframe: "Isolating exposure bands…" };
+const VIEW_BUILDERS = { stack: makeSlices, wireframe: makeWireframe };
+const VIEW_BUSY = { stack: "Building photostack…", wireframe: "Building 3D structure…" };
 
 export async function buildView(mode) {
   if (!state.id || !three) return;
