@@ -73,12 +73,17 @@ The **3D model** tab has four orbitable views:
 - **Mesh** — the input STL.
 - **Photostack** — the literal rendered layers stacked as thin slices.
 - **Volume** — a gap-free voxel solid at full height (each voxel tiles its layer slab), shaded by exposure.
-- **Wireframe** — isolate the photostack's exposure **bands** in 3D. Toggle any
-  combination of **white** (high exposure — struts/caps/rim), **gray** (mid —
-  faces/core), and **black** (interior voids — the carved core pockets), drawn as
-  a see-through **cage** or **solid** blocks. Two editable thresholds set the
-  white/gray/black splits. Each voxel is classified by its brightest pixel, so
-  thin white struts stay visible instead of averaging away.
+- **Wireframe** —
+  - For **tessellation** modes (cubic / triangular): a **Cage** draws the actual
+    strut lattice — the vertical columns and the square/triangular frame edges —
+    as crisp 3D lines computed from the parameters and clipped to the part, so you
+    see the real triangle/cube structure the voxel grid is too coarse to resolve.
+    **Solid** fills it as a voxel body instead.
+  - For **uniform / gradient** modes: isolate the photostack's exposure **bands** —
+    toggle any combination of **white** (high exposure), **gray** (mid), and
+    **black** (interior voids), as a see-through cage or solid blocks, with two
+    editable thresholds. Each voxel is classified by its brightest pixel so thin
+    features stay visible.
 
 A **Cutaway** slider clips any view to see inside.
 

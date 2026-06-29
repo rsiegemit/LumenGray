@@ -154,6 +154,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 
 /* Wireframe band controls */
 .wf-panel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wf-bandwrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wf-bandwrap[hidden] { display: none; }
 .wf-bands { display: flex; background: var(--card-2); border-radius: 9px; padding: 4px; gap: 4px; }
 .wf-bands label { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 7px; font-size: 12px; color: var(--muted); cursor: pointer; transition: all .15s; }
 .wf-bands label.on { background: var(--accent); color: #1a1206; font-weight: 600; }

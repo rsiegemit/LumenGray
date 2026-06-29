@@ -4,7 +4,7 @@
 import { $, state, status, downloadBlob } from "./core.js";
 import { postJSON } from "./api.js";
 import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs } from "./config.js";
-import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView } from "./viewer3d.js";
+import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView, updateWfControls } from "./viewer3d.js";
 
 // ── Presets ──────────────────────────────────────────────
 const svg = (inner) =>
@@ -279,7 +279,13 @@ function wire() {
 
   // grayscale-mode segmented control
   document.querySelectorAll("#mode-seg button").forEach((btn) => {
-    btn.addEventListener("click", () => { selectMode(btn.dataset.mode); schedulePreview(); });
+    btn.addEventListener("click", () => {
+      selectMode(btn.dataset.mode);
+      schedulePreview();
+      // a mode change can switch the wireframe between strut-cage and band view
+      updateWfControls();
+      if (currentViewMode() === "wireframe" && state.id) refreshView();
+    });
   });
 
   // viewer tabs (2D layers / 3D model)

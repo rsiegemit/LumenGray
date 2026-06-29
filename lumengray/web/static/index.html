@@ -192,21 +192,23 @@
               <button data-tmode="wireframe" title="Isolate the photostack's exposure bands in 3D — white / gray / black.">Wireframe</button>
             </div>
             <div class="wf-panel" id="wf3d-panel" hidden>
-              <div class="wf-bands" id="wf3d-bands" title="Which exposure bands of the photostack to show in 3D. Combine any.">
-                <label class="on"><input type="checkbox" value="white" checked />White</label>
-                <label class="on"><input type="checkbox" value="gray" checked />Gray</label>
-                <label><input type="checkbox" value="black" />Black</label>
+              <div class="segmented small" id="wf3d-style" title="Tessellation: Cage = procedural strut edges (the lattice); Solid = filled voxel body. Other modes: see-through wireframe vs solid blocks.">
+                <button data-style="cage" class="active" title="Strut-edge cage (the triangular/cubic lattice).">Cage</button>
+                <button data-style="solid" title="Solid voxel body.">Solid</button>
               </div>
-              <div class="segmented small" id="wf3d-style" title="Draw each band as a see-through wireframe cage or as solid blocks.">
-                <button data-style="cage" class="active" title="Wireframe edges (see-through).">Cage</button>
-                <button data-style="solid" title="Solid shaded blocks.">Solid</button>
+              <div class="wf-bandwrap" id="wf3d-bandwrap" title="Exposure bands (non-tessellation modes).">
+                <div class="wf-bands" id="wf3d-bands" title="Which exposure bands of the photostack to show in 3D. Combine any.">
+                  <label class="on"><input type="checkbox" value="white" checked />White</label>
+                  <label class="on"><input type="checkbox" value="gray" checked />Gray</label>
+                  <label><input type="checkbox" value="black" />Black</label>
+                </div>
+                <label class="wf-thresh" title="Values below this are the black (void) band.">
+                  Gray&nbsp;≥<input type="number" id="wf3d-tlow" min="1" max="254" value="64" />
+                </label>
+                <label class="wf-thresh" title="Values at or above this are the white band.">
+                  White&nbsp;≥<input type="number" id="wf3d-thigh" min="2" max="255" value="192" />
+                </label>
               </div>
-              <label class="wf-thresh" title="Values below this are the black (void) band.">
-                Gray&nbsp;≥<input type="number" id="wf3d-tlow" min="1" max="254" value="64" />
-              </label>
-              <label class="wf-thresh" title="Values at or above this are the white band.">
-                White&nbsp;≥<input type="number" id="wf3d-thigh" min="2" max="255" value="192" />
-              </label>
             </div>
             <label class="cutaway" title="Slice away part of the model to see inside">
               Cutaway

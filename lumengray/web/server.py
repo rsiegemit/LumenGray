@@ -83,6 +83,12 @@ class VoxelRequest(BaseModel):
     peak: bool = False  # report each voxel's max exposure (band view) instead of the mean (volume)
 
 
+class CageRequest(BaseModel):
+    id: str
+    config: dict
+    max_segments: int = 120000
+
+
 
 
 def create_app() -> FastAPI:
@@ -424,6 +430,82 @@ def create_app() -> FastAPI:
             "height_mm": round(height_mm, 4),
         }
 
+
+    @app.post("/api/cage")
+    def cage(req: CageRequest) -> dict:
+        """Procedural strut-edge cage for a tessellation: the vertical columns at
+        the grid nodes + the horizontal frame edges, drawn as crisp 3D line
+        segments computed from the lattice parameters (clipped to the part's
+        footprint). Shows the cubic/triangular lattice the coarse voxel view can't
+        resolve. Returns [] for non-tessellation modes."""
+        item = _get(req.id)
+        config = _config(req.config)
+        cub, tri = config.tessellation, config.triangulation
+        if cub is None and tri is None:
+            return {"segments": [], "kind": None, "height_mm": 0.0, "count": 0, "truncated": False}
+
+        mesh = _oriented(item, config)
+        total = count_layers(mesh, config.printer)
+        if total == 0:
+            raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
+        pixel_mm = config.printer.pixel_size_um / 1000.0
+        layer_mm = config.printer.layer_height_um / 1000.0
+        width, height = config.printer.resolution
+        height_mm = total * layer_mm
+
+        # One representative interior layer gives the part footprint to clip to.
+        mid = max(1, min(total, total // 2))
+        mask = slice_index(mesh, config.printer, config.center_xy, mid)
+        H, Wd = mask.shape
+
+        def to_mm(col, row, z):
+            return [round(col * pixel_mm, 3), round((height - 1 - row) * pixel_mm, 3), round(z, 3)]
+
+        def inpart(col, row):
+            r, c = int(round(row)), int(round(col))
+            return 0 <= r < H and 0 <= c < Wd and bool(mask[r, c])
+
+        if cub is not None:
+            kind, p, period = "cubic", cub.cube_xy_px, cub.cube_z_layers
+            cap_b, cap_t = cub.cap_bottom_layers, cub.cap_top_layers
+            nodes = [(c, r) for r in range(0, H, p) for c in range(0, Wd, p) if mask[r, c]]
+            neighbours = lambda c, r: ((c + p, r), (c, r + p))  # right + down (square grid)
+        else:
+            kind, tp, period = "triangular", tri.tri_px, tri.z_layers
+            cap_b, cap_t = tri.cap_bottom_layers, tri.cap_top_layers
+            sp = tp * (3.0 ** 0.5) / 2.0  # row spacing (perpendicular family distance)
+            nodes, r_idx, row = [], 0, 0.0
+            while row < H:
+                col = (r_idx % 2) * (tp / 2.0)  # odd rows offset half a cell
+                while col < Wd:
+                    if inpart(col, row):
+                        nodes.append((col, row))
+                    col += tp
+                r_idx += 1
+                row = r_idx * sp
+            neighbours = lambda c, r: ((c + tp, r), (c + tp / 2.0, r + sp), (c - tp / 2.0, r + sp))
+
+        # Horizontal frames sit every `period` layers from the first interior layer.
+        frame_z = [(L - 0.5) * layer_mm for L in range(cap_b + 1, total - cap_t + 1, period)]
+
+        segs = []
+        for c, r in nodes:  # vertical columns span the full height
+            segs.append(to_mm(c, r, 0.0) + to_mm(c, r, height_mm))
+        for z in frame_z:  # triangular/square frame edges at each level
+            for c, r in nodes:
+                for c2, r2 in neighbours(c, r):
+                    if inpart(c2, r2):
+                        segs.append(to_mm(c, r, z) + to_mm(c2, r2, z))
+            if len(segs) > req.max_segments:
+                break
+        truncated = len(segs) > req.max_segments
+        return {
+            "segments": segs[: req.max_segments],
+            "kind": kind,
+            "height_mm": round(height_mm, 4),
+            "count": min(len(segs), req.max_segments),
+            "truncated": truncated,
+        }
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app

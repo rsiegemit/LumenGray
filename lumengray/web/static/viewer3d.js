@@ -187,11 +187,28 @@ async function makeVolume() {
 const BAND_SHADE = { white: 0xffffff, gray: 0x8a8a8a, black: 0x4f7ad6 };
 
 function bandControls() {
-  const bands = [...document.querySelectorAll("#wf3d-bands input:checked")].map((i) => i.value);
+  const wrap = $("wf3d-bandwrap");
+  // Tessellation hides the band picker; the solid style then fills all bands.
+  const bands = wrap && wrap.hidden
+    ? ["white", "gray", "black"]
+    : [...document.querySelectorAll("#wf3d-bands input:checked")].map((i) => i.value);
   const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
   const tLow = parseInt($("wf3d-tlow")?.value, 10) || 64;
   const tHigh = parseInt($("wf3d-thigh")?.value, 10) || 192;
   return { bands, style, tLow, tHigh };
+}
+
+// Which tessellation lattice (if any) the current config describes.
+function wfKind() {
+  const g = buildConfig().grayscale;
+  return g.triangular_tessellation ? "triangular" : g.cubic_tessellation ? "cubic" : null;
+}
+
+// Show/hide the exposure-band picker: tessellation modes use the procedural
+// strut cage instead, so the white/gray/black + threshold controls don't apply.
+export function updateWfControls() {
+  const wrap = $("wf3d-bandwrap");
+  if (wrap) wrap.hidden = !!wfKind();
 }
 
 function bandOf(v, tLow, tHigh) {
@@ -244,7 +261,7 @@ async function fetchVoxels(includeVoid) {
   return data;
 }
 
-async function makeWireframe() {
+async function makeBands() {
   const { bands, style, tLow, tHigh } = bandControls();
   if (!bands.length) return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10, hint: "Pick a band — White / Gray / Black" };
   const data = await fetchVoxels(bands.includes("black"));
@@ -273,6 +290,41 @@ async function makeWireframe() {
   const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
   const hint = `Bands · ${bands.join("+")} · ${shown.toLocaleString()} voxels${data.truncated ? " (capped)" : ""}`;
   return { obj: group, h, radius, hint };
+}
+
+// Procedural strut cage: crisp 3D edges of the cubic/triangular lattice (columns
+// + frame triangles/squares), computed server-side from the params. Shows the
+// lattice the coarse voxel view can't resolve.
+async function makeCage() {
+  const data = await postJSON("/api/cage", { id: state.id, config: buildConfig() });
+  if (!data.segments.length) {
+    return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10,
+      hint: data.kind ? "Strut cage: nothing inside the part" : "Strut cage is for Cubic / Triangular modes" };
+  }
+  const segs = data.segments, h = data.height_mm;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  segs.forEach((s) => { for (let k = 0; k < 6; k += 3) { xmin = Math.min(xmin, s[k]); xmax = Math.max(xmax, s[k]); ymin = Math.min(ymin, s[k + 1]); ymax = Math.max(ymax, s[k + 1]); } });
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
+  const pos = new Float32Array(segs.length * 6);
+  segs.forEach((s, i) => {
+    pos[i * 6] = s[0] - mx; pos[i * 6 + 1] = s[1] - my; pos[i * 6 + 2] = s[2] - h / 2;
+    pos[i * 6 + 3] = s[3] - mx; pos[i * 6 + 4] = s[4] - my; pos[i * 6 + 5] = s[5] - h / 2;
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
+  const group = new THREE.Group();
+  group.add(lines);
+  const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
+  return { obj: group, h, radius, hint: `${data.kind} strut cage · ${data.count.toLocaleString()} edges${data.truncated ? " (capped)" : ""}` };
+}
+
+// Dispatch the Wireframe view: tessellation + Cage → procedural strut cage;
+// otherwise the exposure-band voxel view (tessellation + Solid fills all bands).
+async function makeWireframe() {
+  const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
+  if (wfKind() && style === "cage") return makeCage();
+  return makeBands();
 }
 
 // Force a rebuild of the current built view (e.g. a band control changed, which
@@ -320,6 +372,7 @@ export async function setThreeMode(mode) {
   document.querySelectorAll("#three-mode button").forEach((b) => b.classList.toggle("active", b.dataset.tmode === mode));
   const panel = $("wf3d-panel");
   if (panel) panel.hidden = mode !== "wireframe";
+  updateWfControls();
   if (!(await loadThreeLibs())) return;
   try { if (!three) initThree(); } catch (e) { return; }
   three.mode = mode;
