@@ -3,8 +3,8 @@
 
 import { $, state, status, downloadBlob } from "./core.js";
 import { postJSON } from "./api.js";
-import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs, currentMode } from "./config.js";
-import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode } from "./viewer3d.js";
+import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs } from "./config.js";
+import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView } from "./viewer3d.js";
 
 // ── Presets ──────────────────────────────────────────────
 const svg = (inner) =>
@@ -56,7 +56,6 @@ async function loadPreset(id, values = null) {
     setModel(data);
     document.querySelectorAll(".preset").forEach((el) => el.classList.toggle("active", el.dataset.id === id));
     applyConfig(data.config);
-    updateLatticeAvail();
     if (id !== currentPresetId) renderDims(id, data.values); // rebuild only on preset switch (keep focus on edits)
     currentPresetId = id;
     status("Loaded " + data.name);
@@ -264,14 +263,6 @@ async function exportStack() {
   }
 }
 
-// Lattice is only meaningful in cubic-tessellation mode; disable it otherwise.
-function updateLatticeAvail() {
-  const btn = document.querySelector('#three-mode button[data-tmode="lattice"]');
-  const cubic = currentMode() === "cubic";
-  btn.disabled = !cubic;
-  btn.title = cubic ? "" : "Lattice view is only available in Cubic tessellation mode";
-}
-
 // ── Wiring ───────────────────────────────────────────────
 function wire() {
   $("file-input").addEventListener("change", (e) => uploadFile(e.target.files[0]));
@@ -288,7 +279,7 @@ function wire() {
 
   // grayscale-mode segmented control
   document.querySelectorAll("#mode-seg button").forEach((btn) => {
-    btn.addEventListener("click", () => { selectMode(btn.dataset.mode); updateLatticeAvail(); schedulePreview(); });
+    btn.addEventListener("click", () => { selectMode(btn.dataset.mode); schedulePreview(); });
   });
 
   // viewer tabs (2D layers / 3D model)
@@ -305,6 +296,13 @@ function wire() {
   document.querySelectorAll("#three-mode button").forEach((btn) => {
     btn.addEventListener("click", () => setThreeMode(btn.dataset.tmode));
   });
+  // wireframe colour (white / gray / black) → rebuild the wireframe view
+  document.querySelectorAll("#wf3d-color button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#wf3d-color button").forEach((b) => b.classList.toggle("active", b === btn));
+      refreshView();
+    });
+  });
   $("clip-slider").addEventListener("input", applyClip);
 
   // 2D layer scrubber
@@ -319,7 +317,6 @@ function wire() {
 
   updateOutputs();
   refreshConfigJson();
-  updateLatticeAvail();
   loadPresets();
 }
 

@@ -80,10 +80,6 @@ class VoxelRequest(BaseModel):
     max_voxels: int = 90000
 
 
-class LatticeRequest(BaseModel):
-    id: str
-    config: dict
-    max_cells: int = 40000
 
 
 def create_app() -> FastAPI:
@@ -381,63 +377,6 @@ def create_app() -> FastAPI:
             "height_mm": round(height_mm, 4),
         }
 
-    @app.post("/api/lattice")
-    def lattice(req: LatticeRequest) -> dict:
-        item = _get(req.id)
-        config = _config(req.config)
-        if config.tessellation is None:
-            raise HTTPException(400, "Lattice view requires cubic tessellation mode")
-        t = config.tessellation
-        mesh = _oriented(item, config)
-        total = count_layers(mesh, config.printer)
-        if total == 0:
-            raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
-
-        pixel_mm = config.printer.pixel_size_um / 1000.0
-        layer_mm = config.printer.layer_height_um / 1000.0
-        cube_xy, cube_z = t.cube_xy_px, t.cube_z_layers
-        first, last = t.cap_bottom_layers + 1, total - t.cap_top_layers
-
-        sampler = _BoundedSampler(req.max_cells)
-        # One representative slice per Z-band gives that band's XY cube occupancy.
-        # Free the full-canvas boolean arrays each iteration and bound the kept
-        # cell sample so peak RAM stays flat — accumulating every cell (millions
-        # on a large model) before striking it down is what OOMs small hosts.
-        band_start = first
-        while band_start <= last:
-            band_end = min(band_start + cube_z - 1, last)
-            rep = (band_start + band_end) // 2
-            solid = slice_index(mesh, config.printer, config.center_xy, rep)
-            height, width = solid.shape
-            ncy, ncx = -(-height // cube_xy), -(-width // cube_xy)
-            padded = np.zeros((ncy * cube_xy, ncx * cube_xy), dtype=bool)
-            padded[:height, :width] = solid
-            occupied = padded.reshape(ncy, cube_xy, ncx, cube_xy).any(axis=(1, 3))
-            z_mm = ((band_start + band_end) / 2.0 - 0.5) * layer_mm
-            rows, cols = np.where(occupied)
-            del solid, padded, occupied
-            for cy, cx in zip(rows, cols):
-                col_c = cx * cube_xy + cube_xy / 2.0
-                row_c = cy * cube_xy + cube_xy / 2.0
-                sampler.add([
-                    round(float(col_c * pixel_mm), 4),
-                    round(float((height - 1 - row_c) * pixel_mm), 4),
-                    round(float(z_mm), 4),
-                ])
-            del rows, cols
-            band_start += cube_z
-
-        gc.collect()
-        total_cells = sampler.total
-        truncated = total_cells > req.max_cells
-        cells = sampler.result()
-        return {
-            "cube_size_mm": [round(cube_xy * pixel_mm, 4), round(cube_xy * pixel_mm, 4), round(cube_z * layer_mm, 4)],
-            "cells": cells,
-            "count": total_cells,
-            "truncated": truncated,
-            "height_mm": round(total * layer_mm, 4),
-        }
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app

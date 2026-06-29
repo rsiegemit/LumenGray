@@ -180,38 +180,37 @@ async function makeVolume() {
 
 // Lattice: the hollow-cube cage as crisp box edges (cubic-tessellation only).
 // Boxes are shrunk slightly so neighbours don't merge — discrete hollow cubes.
-const CUBE_CORNERS = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]];
-const CUBE_EDGES = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+// Wireframe: the loaded mesh drawn as edges, in white / gray / black. Pure
+// client-side (uses the already-loaded geometry) — no backend call.
+const WF_COLORS = { white: 0xffffff, gray: 0x888888, black: 0x000000 };
 
-async function makeLattice() {
-  const data = await postJSON("/api/lattice", { id: state.id, config: buildConfig() });
-  const [sx, sy, sz] = data.cube_size_mm;
-  const h = data.height_mm;
-  const cs = data.cells;
-  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-  cs.forEach((c) => { xmin = Math.min(xmin, c[0]); xmax = Math.max(xmax, c[0]); ymin = Math.min(ymin, c[1]); ymax = Math.max(ymax, c[1]); });
-  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
-  const hx = sx * 0.44, hy = sy * 0.44, hz = sz * 0.44; // 0.88 of cube → visible gap
-  const pos = new Float32Array(cs.length * CUBE_EDGES.length * 2 * 3);
-  let p = 0;
-  cs.forEach((c) => {
-    const ox = c[0] - mx, oy = c[1] - my, oz = c[2] - h / 2;
-    for (const [a, b] of CUBE_EDGES) {
-      const A = CUBE_CORNERS[a], B = CUBE_CORNERS[b];
-      pos[p++] = ox + A[0] * hx; pos[p++] = oy + A[1] * hy; pos[p++] = oz + A[2] * hz;
-      pos[p++] = ox + B[0] * hx; pos[p++] = oy + B[1] * hy; pos[p++] = oz + B[2] * hz;
-    }
-  });
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xf5a623, transparent: true, opacity: 0.75 }));
+async function makeWireframe() {
+  if (!three.mesh) throw new Error("load a model first");
+  const geo = three.mesh.geometry;
+  geo.computeBoundingBox();
+  const h = geo.boundingBox.max.z - geo.boundingBox.min.z;
+  const picked = document.querySelector("#wf3d-color button.active");
+  const color = WF_COLORS[picked ? picked.dataset.wf : "white"] ?? 0xffffff;
+  const lines = new THREE.LineSegments(
+    new THREE.WireframeGeometry(geo),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }),
+  );
   const group = new THREE.Group();
   group.add(lines);
-  return { obj: group, h, radius: Math.max(xmax - xmin, ymax - ymin, h) * 0.85 || 10, hint: `Lattice · ${data.count.toLocaleString()} cubes${data.truncated ? " (capped)" : ""}` };
+  return { obj: group, h, radius: three.meshRadius || 10, hint: "Wireframe" };
 }
 
-const VIEW_BUILDERS = { stack: makeSlices, volume: makeVolume, lattice: makeLattice };
-const VIEW_BUSY = { stack: "Building photostack…", volume: "Building volume…", lattice: "Building lattice…" };
+// Force a rebuild of the current built view (e.g. the wireframe colour changed,
+// which isn't part of the config dedup key).
+export function refreshView() {
+  if (three && three.mode !== "mesh" && state.id) {
+    three.stackKey = null;
+    buildView(three.mode);
+  }
+}
+
+const VIEW_BUILDERS = { stack: makeSlices, volume: makeVolume, wireframe: makeWireframe };
+const VIEW_BUSY = { stack: "Building photostack…", volume: "Building volume…", wireframe: "Building wireframe…" };
 
 export async function buildView(mode) {
   if (!state.id || !three) return;
@@ -244,6 +243,8 @@ export async function buildView(mode) {
 
 export async function setThreeMode(mode) {
   document.querySelectorAll("#three-mode button").forEach((b) => b.classList.toggle("active", b.dataset.tmode === mode));
+  const colorSel = $("wf3d-color");
+  if (colorSel) colorSel.hidden = mode !== "wireframe";
   if (!(await loadThreeLibs())) return;
   try { if (!three) initThree(); } catch (e) { return; }
   three.mode = mode;
