@@ -453,51 +453,88 @@ def create_app() -> FastAPI:
         width, height = config.printer.resolution
         height_mm = total * layer_mm
 
-        # One representative interior layer gives the part footprint to clip to.
-        mid = max(1, min(total, total // 2))
-        mask = slice_index(mesh, config.printer, config.center_xy, mid)
-        H, Wd = mask.shape
+        # Candidate-node window from the model's XY bounds; each Z level below is
+        # clipped to ITS OWN slice silhouette, so frames and columns follow curves.
+        c0, r0, c1, r1 = _footprint_box(mesh, config)
 
         def to_mm(col, row, z):
             return [round(col * pixel_mm, 3), round((height - 1 - row) * pixel_mm, 3), round(z, 3)]
 
-        def inpart(col, row):
+        def solid_at(mask, col, row):
             r, c = int(round(row)), int(round(col))
-            return 0 <= r < H and 0 <= c < Wd and bool(mask[r, c])
+            return 0 <= r < mask.shape[0] and 0 <= c < mask.shape[1] and bool(mask[r, c])
 
         if cub is not None:
             kind, p, period = "cubic", cub.cube_xy_px, cub.cube_z_layers
             cap_b, cap_t = cub.cap_bottom_layers, cub.cap_top_layers
-            nodes = [(c, r) for r in range(0, H, p) for c in range(0, Wd, p) if mask[r, c]]
+            nodes = [(c, r) for r in range((r0 // p) * p, r1, p) for c in range((c0 // p) * p, c1, p)]
             neighbours = lambda c, r: ((c + p, r), (c, r + p))  # right + down (square grid)
         else:
             kind, tp, period = "triangular", tri.tri_px, tri.z_layers
             cap_b, cap_t = tri.cap_bottom_layers, tri.cap_top_layers
             sp = tp * (3.0 ** 0.5) / 2.0  # row spacing (perpendicular family distance)
-            nodes, r_idx, row = [], 0, 0.0
-            while row < H:
-                col = (r_idx % 2) * (tp / 2.0)  # odd rows offset half a cell
-                while col < Wd:
-                    if inpart(col, row):
+            nodes, r_idx = [], int(r0 // sp)
+            row = r_idx * sp
+            while row < r1:
+                offset = (r_idx % 2) * (tp / 2.0)  # odd rows offset half a cell
+                col = offset + ((c0 - offset) // tp) * tp
+                while col < c1:
+                    if col >= 0:
                         nodes.append((col, row))
                     col += tp
                 r_idx += 1
                 row = r_idx * sp
             neighbours = lambda c, r: ((c + tp, r), (c + tp / 2.0, r + sp), (c - tp / 2.0, r + sp))
 
-        # Horizontal frames sit every `period` layers from the first interior layer.
-        frame_z = [(L - 0.5) * layer_mm for L in range(cap_b + 1, total - cap_t + 1, period)]
+        # Z sampling levels: every frame layer (where the bracing frames sit) plus
+        # the first/last interior layer so columns reach the caps. Cap the slice
+        # count for very tall models.
+        lo, hi = cap_b + 1, total - cap_t
+        frame_layers = list(range(lo, hi + 1, period))
+        levels = sorted(set([lo] + frame_layers + [hi]))
+        if len(levels) > 80:
+            keep = set(levels[:: -(-len(levels) // 80)]) | {lo, hi}
+            frame_layers = [L for L in frame_layers if L in keep]
+            levels = sorted(keep | set(frame_layers))
+        frame_set = set(frame_layers)
+        level_z = {L: (L - 0.5) * layer_mm for L in levels}
 
+        present = [[False] * len(levels) for _ in nodes]
         segs = []
-        for c, r in nodes:  # vertical columns span the full height
-            segs.append(to_mm(c, r, 0.0) + to_mm(c, r, height_mm))
-        for z in frame_z:  # triangular/square frame edges at each level
-            for c, r in nodes:
-                for c2, r2 in neighbours(c, r):
-                    if inpart(c2, r2):
-                        segs.append(to_mm(c, r, z) + to_mm(c2, r2, z))
-            if len(segs) > req.max_segments:
-                break
+        for li, L in enumerate(levels):
+            mask = slice_index(mesh, config.printer, config.center_xy, L)
+            z = level_z[L]
+            for ni, (c, r) in enumerate(nodes):
+                if solid_at(mask, c, r):
+                    present[ni][li] = True
+            if L in frame_set:  # frame edges, clipped to this layer's silhouette
+                for ni, (c, r) in enumerate(nodes):
+                    if not present[ni][li]:
+                        continue
+                    for c2, r2 in neighbours(c, r):
+                        if solid_at(mask, c2, r2):
+                            segs.append(to_mm(c, r, z) + to_mm(c2, r2, z))
+                if len(segs) > req.max_segments:
+                    break
+            del mask
+
+        # Vertical columns over each run of consecutive in-part levels (so a column
+        # only spans the height where the part actually covers that node).
+        if len(segs) <= req.max_segments:
+            for ni, (c, r) in enumerate(nodes):
+                pr, li = present[ni], 0
+                n = len(levels)
+                while li < n:
+                    if pr[li]:
+                        start = li
+                        while li + 1 < n and pr[li + 1]:
+                            li += 1
+                        if li > start:
+                            segs.append(to_mm(c, r, level_z[levels[start]]) + to_mm(c, r, level_z[levels[li]]))
+                    li += 1
+                if len(segs) > req.max_segments:
+                    break
+
         truncated = len(segs) > req.max_segments
         return {
             "segments": segs[: req.max_segments],

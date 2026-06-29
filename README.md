@@ -76,8 +76,10 @@ The **3D model** tab has four orbitable views:
 - **Wireframe** —
   - For **tessellation** modes (cubic / triangular): a **Cage** draws the actual
     strut lattice — the vertical columns and the square/triangular frame edges —
-    as crisp 3D lines computed from the parameters and clipped to the part, so you
-    see the real triangle/cube structure the voxel grid is too coarse to resolve.
+    as crisp 3D lines computed from the parameters and clipped per layer (each
+    frame to its own slice silhouette, columns only where the part is) so it
+    follows curved shapes — letting you see the real triangle/cube structure the
+    voxel grid is too coarse to resolve.
     **Solid** fills it as a voxel body instead.
   - For **uniform / gradient** modes: isolate the photostack's exposure **bands** —
     toggle any combination of **white** (high exposure), **gray** (mid), and
