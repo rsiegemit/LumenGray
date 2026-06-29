@@ -204,7 +204,8 @@ def create_app() -> FastAPI:
             "resolution": list(config.printer.resolution),
             "extents_mm": [round(v, 3) for v in extents],
             "mode": (
-                "triangular_tessellation" if config.triangulation is not None
+                "wireframe" if config.wireframe is not None
+                else "triangular_tessellation" if config.triangulation is not None
                 else "cubic_tessellation" if config.tessellation is not None
                 else "regions"
             ),

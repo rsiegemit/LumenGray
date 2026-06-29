@@ -57,6 +57,9 @@ export function buildConfig() {
       grey_value: int("tr-grey", 128),
       white_value: int("tr-white", 255),
     };
+  } else if (mode === "wireframe") {
+    const wf = document.querySelector("#wf-color button.active");
+    config.grayscale.wireframe = { line_px: int("wf-line", 2), color: wf ? wf.dataset.wf : "white" };
   }
   return config;
 }
@@ -89,6 +92,10 @@ export function applyConfig(c) {
     setVal("tr-tri", t.tri_px); setVal("tr-z", t.z_layers); setVal("tr-shell", t.shell_px);
     setVal("tr-core", t.core_px); setVal("tr-boundary", t.boundary_px); setVal("tr-grey", t.grey_value); setVal("tr-white", t.white_value);
     selectMode("triangular");
+  } else if (g.wireframe) {
+    setVal("wf-line", g.wireframe.line_px);
+    document.querySelectorAll("#wf-color button").forEach((b) => b.classList.toggle("active", b.dataset.wf === g.wireframe.color));
+    selectMode("wireframe");
   } else if (g.gradient) {
     setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);
     selectMode("gradient");

@@ -164,6 +164,18 @@ def main():
     interior_black = int(((core_layer == 0) & block).sum())
     assert interior_black > 0, "triangular black core produced no void inside the solid"
 
+    # --- wireframe (outline-only) in all three colours ---
+    from lumengray.config import Wireframe
+
+    block50 = np.array(Image.open(os.path.join(out_tess, tfiles[49]))) > 0  # a solid mid layer
+    for color, want in (("white", {0, 255}), ("gray", {0, 128}), ("black", {0, 255})):
+        out_wf = os.path.join(work, "wf-" + color)
+        run(prism_path, out_wf, _replace(default_config(), wireframe=Wireframe(line_px=2, color=color)))
+        wf = np.array(Image.open(os.path.join(out_wf, sorted(f for f in os.listdir(out_wf) if f.endswith(".png"))[49])))
+        assert set(np.unique(wf).tolist()) == want, (color, np.unique(wf))
+        if color == "white":  # outline only → far fewer cured px than the solid fill
+            assert int((wf == 255).sum()) < int(block50.sum()) * 0.6, "white wireframe not outline-only"
+
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
     print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)
     print("cubic tessellation:", tsum["layers"], "layers | caps+edge-struts+rim verified | strut", strut_col, "core", core_col)
