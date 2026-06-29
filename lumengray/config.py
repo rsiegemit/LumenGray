@@ -9,7 +9,7 @@ All data is immutable (frozen dataclasses + tuples).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 # Lumen X3 optical specs from Protocol.pdf, used as defaults.
 DEFAULT_RESOLUTION = (1920, 1080)
@@ -172,6 +172,31 @@ def config_from_dict(raw: dict) -> Config:
     if not isinstance(raw, dict):
         raise ConfigError("Config must be a JSON object")
     return _build_config(raw)
+
+
+def config_to_dict(config: Config) -> dict:
+    """Serialize a validated Config back to the public schema (the values actually used)."""
+    grayscale: dict = {}
+    if config.triangulation is not None:
+        grayscale["triangular_tessellation"] = asdict(config.triangulation)
+    elif config.tessellation is not None:
+        grayscale["cubic_tessellation"] = asdict(config.tessellation)
+    else:
+        if config.gradient is not None:
+            grayscale["gradient"] = asdict(config.gradient)
+        else:
+            grayscale["default_solid_value"] = config.default_solid_value
+        if config.regions:
+            grayscale["regions"] = [asdict(region) for region in config.regions]
+    return {
+        "printer": {
+            "resolution": list(config.printer.resolution),
+            "pixel_size_um": config.printer.pixel_size_um,
+            "layer_height_um": config.printer.layer_height_um,
+        },
+        "model": {"center_xy": config.center_xy, "rotation_deg": list(config.rotation_deg)},
+        "grayscale": grayscale,
+    }
 
 
 def _build_config(raw: dict) -> Config:

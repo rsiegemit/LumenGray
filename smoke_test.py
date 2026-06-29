@@ -23,9 +23,10 @@ def main():
     out_uniform = os.path.join(work, "uniform")
     summary = run(stl_path, out_uniform, default_config())
     expected = int(5.0 / (50 / 1000.0))  # 5mm / 50um = 100 layers
-    files = sorted(os.listdir(out_uniform))
+    files = sorted(f for f in os.listdir(out_uniform) if f.endswith(".png"))
     assert summary["layers"] == expected, (summary["layers"], expected)
     assert len(files) == expected, len(files)
+    assert "manifest.json" in os.listdir(out_uniform), "run() should write a manifest"
 
     img = np.array(Image.open(os.path.join(out_uniform, files[0])))
     assert img.shape == (1080, 1920), img.shape
@@ -39,7 +40,7 @@ def main():
     cfg = load_config(os.path.join(os.path.dirname(__file__), "config.example.json"))
     out_gray = os.path.join(work, "gray")
     summary = run(stl_path, out_gray, cfg, preview=True)
-    gray_files = [f for f in sorted(os.listdir(out_gray)) if f != "_preview.png"]
+    gray_files = [f for f in sorted(os.listdir(out_gray)) if f.endswith(".png") and f != "_preview.png"]
 
     # Layer 1 (in [1,20]) should contain the dim rect (128) and circle (80).
     layer1 = np.array(Image.open(os.path.join(out_gray, gray_files[0])))

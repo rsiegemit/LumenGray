@@ -42,6 +42,7 @@ class Upload:
     path: str
     name: str
     mesh: trimesh.Trimesh
+    meta: dict  # origin: uploaded filename, or preset name + dimensions used
 
 
 class PresetRequest(BaseModel):
@@ -113,11 +114,11 @@ def create_app() -> FastAPI:
         # orient_mesh mutates in place, so always work on a copy of the cached mesh.
         return orient_mesh(item.mesh.copy(), config.rotation_deg)
 
-    def _register(mesh: trimesh.Trimesh, name: str) -> dict:
+    def _register(mesh: trimesh.Trimesh, name: str, meta: dict) -> dict:
         upload_id = uuid.uuid4().hex
         path = os.path.join(upload_dir, f"{upload_id}.stl")
         mesh.export(path)
-        uploads[upload_id] = Upload(path=path, name=name, mesh=mesh)
+        uploads[upload_id] = Upload(path=path, name=name, mesh=mesh, meta=meta)
         extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
         return {
             "id": upload_id,
@@ -148,7 +149,8 @@ def create_app() -> FastAPI:
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
-        return _register(mesh, file.filename or "model.stl")
+        name = file.filename or "model.stl"
+        return _register(mesh, name, {"kind": "upload", "filename": name})
 
     @app.get("/api/presets")
     def presets() -> list[dict]:
@@ -179,7 +181,8 @@ def create_app() -> FastAPI:
             mesh = preset["build"](values)
         except Exception as error:  # noqa: BLE001 - bad dimensions → 400, not 500
             raise HTTPException(400, f"Could not build model: {error}") from error
-        result = _register(mesh, f"{preset['name']}.stl")
+        meta = {"kind": "preset", "preset_id": preset_id, "name": preset["name"], "dimensions_mm": values}
+        result = _register(mesh, f"{preset['name']}.stl", meta)
         result["config"] = preset["config"]
         result["params"] = preset["params"]
         result["values"] = values
@@ -240,9 +243,10 @@ def create_app() -> FastAPI:
         out_dir = os.path.join(work_dir, "layers")
         os.makedirs(out_dir, exist_ok=True)
         try:
-            summary = run(item.path, out_dir, config, name_prefix=req.prefix)
+            # run() writes the PNG layers AND a manifest.json (source + every setting).
+            summary = run(item.path, out_dir, config, name_prefix=req.prefix, source=item.meta)
             # Stream the zip to disk (not an in-memory BytesIO) and delete each
-            # PNG as it is archived so neither RAM nor disk holds the full stack
+            # file as it is archived so neither RAM nor disk holds the full stack
             # twice — building the whole zip in memory is what OOMs small hosts.
             zip_path = os.path.join(work_dir, "photostack.zip")
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -250,7 +254,6 @@ def create_app() -> FastAPI:
                     src = os.path.join(out_dir, filename)
                     archive.write(src, filename)
                     os.remove(src)
-                archive.writestr("manifest.json", _manifest(summary, item.name))
         except (ValueError, ConfigError) as error:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise HTTPException(400, str(error)) from error
@@ -258,11 +261,10 @@ def create_app() -> FastAPI:
             shutil.rmtree(work_dir, ignore_errors=True)
             raise
         gc.collect()
-        stem = os.path.splitext(item.name)[0] or "photostack"
         return FileResponse(
             zip_path,
             media_type="application/zip",
-            filename=f"{stem}_lumengray.zip",
+            filename=f"{summary['name']}.zip",
             background=BackgroundTask(shutil.rmtree, work_dir, ignore_errors=True),
         )
 
@@ -485,23 +487,6 @@ def _footprint_box(mesh, config) -> tuple[int, int, int, int]:
     y0 = max(0, int(np.floor(min(to_row(ymin), to_row(ymax)))))
     y1 = min(height, int(np.ceil(max(to_row(ymin), to_row(ymax)))) + 1)
     return x0, y0, x1, y1
-
-
-def _manifest(summary: dict, source_name: str) -> str:
-    import json
-
-    return json.dumps(
-        {
-            "generator": "LumenGray",
-            "source": source_name,
-            "layers": summary["layers"],
-            "resolution": list(summary["resolution"]),
-            "layer_height_um": summary["layer_height_um"],
-            "pixel_size_um": summary["pixel_size_um"],
-            "mode": summary["mode"],
-        },
-        indent=2,
-    )
 
 
 app = create_app()
