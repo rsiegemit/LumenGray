@@ -291,14 +291,6 @@ function wire() {
     btn.addEventListener("click", () => { selectMode(btn.dataset.mode); updateLatticeAvail(); schedulePreview(); });
   });
 
-  // wireframe colour sub-selector (white / gray / black)
-  document.querySelectorAll("#wf-color button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#wf-color button").forEach((b) => b.classList.toggle("active", b === btn));
-      schedulePreview();
-    });
-  });
-
   // viewer tabs (2D layers / 3D model)
   document.querySelectorAll(".viewer-tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {

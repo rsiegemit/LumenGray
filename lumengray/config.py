@@ -47,10 +47,6 @@ DEFAULT_TRIANGULAR = {
     "white_value": 255,
 }
 
-# Wireframe (outline-only) defaults.
-DEFAULT_WIREFRAME = {"line_px": 2, "color": "white"}
-WIREFRAME_COLORS = ("white", "gray", "black")
-
 
 class ConfigError(ValueError):
     """Raised when a config file is malformed."""
@@ -122,18 +118,6 @@ class TriangularTessellation:
 
 
 @dataclass(frozen=True)
-class Wireframe:
-    """Outline-only mode: draw each layer's cross-section perimeter, leave the rest.
-
-    color: white = white outline on void; gray = grey outline on void;
-    black = void outline grooved into a solid white body (inverse).
-    """
-
-    line_px: int  # outline thickness in pixels
-    color: str  # one of WIREFRAME_COLORS
-
-
-@dataclass(frozen=True)
 class Config:
     printer: Printer
     default_solid_value: int  # fill value for cured pixels (255 = full exposure)
@@ -143,7 +127,6 @@ class Config:
     regions: tuple
     tessellation: CubicTessellation | None  # hollow-cube infill; overrides gradient+regions
     triangulation: TriangularTessellation | None  # triangular strut infill; overrides the above
-    wireframe: Wireframe | None  # outline-only mode; overrides all of the above
 
 
 def default_config() -> Config:
@@ -157,7 +140,6 @@ def default_config() -> Config:
         regions=(),
         tessellation=None,
         triangulation=None,
-        wireframe=None,
     )
 
 
@@ -169,11 +151,6 @@ def default_tessellation() -> CubicTessellation:
 def default_triangular() -> TriangularTessellation:
     """The default triangular strut infill (matches DEFAULT_TRIANGULAR)."""
     return TriangularTessellation(**DEFAULT_TRIANGULAR)
-
-
-def default_wireframe() -> Wireframe:
-    """The default outline-only wireframe (matches DEFAULT_WIREFRAME)."""
-    return Wireframe(**DEFAULT_WIREFRAME)
 
 
 def load_config(path: str) -> Config:
@@ -200,9 +177,7 @@ def config_from_dict(raw: dict) -> Config:
 def config_to_dict(config: Config) -> dict:
     """Serialize a validated Config back to the public schema (the values actually used)."""
     grayscale: dict = {}
-    if config.wireframe is not None:
-        grayscale["wireframe"] = asdict(config.wireframe)
-    elif config.triangulation is not None:
+    if config.triangulation is not None:
         grayscale["triangular_tessellation"] = asdict(config.triangulation)
     elif config.tessellation is not None:
         grayscale["cubic_tessellation"] = asdict(config.tessellation)
@@ -241,13 +216,11 @@ def _build_config(raw: dict) -> Config:
     )
     tessellation = _build_tessellation(grayscale.get("cubic_tessellation"))
     triangulation = _build_triangular(grayscale.get("triangular_tessellation"))
-    wireframe = _build_wireframe(grayscale.get("wireframe"))
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
     return Config(
-        printer, default_solid_value, gradient, center_xy, rotation, regions,
-        tessellation, triangulation, wireframe,
+        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation
     )
 
 
@@ -367,22 +340,6 @@ def _build_triangular(raw) -> TriangularTessellation | None:
         grey_value=grey,
         white_value=white,
     )
-
-
-def _build_wireframe(raw) -> Wireframe | None:
-    if raw is None:
-        return None
-    if not isinstance(raw, dict):
-        raise ConfigError("'grayscale.wireframe' must be an object")
-    if raw.get("enabled") is False:
-        return None
-    line = raw.get("line_px", DEFAULT_WIREFRAME["line_px"])
-    if not isinstance(line, int) or isinstance(line, bool) or line < 0:
-        raise ConfigError("grayscale.wireframe.line_px must be an integer >= 0")
-    color = raw.get("color", DEFAULT_WIREFRAME["color"])
-    if color not in WIREFRAME_COLORS:
-        raise ConfigError(f"grayscale.wireframe.color must be one of {WIREFRAME_COLORS}")
-    return Wireframe(line_px=line, color=color)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

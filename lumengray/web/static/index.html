@@ -86,7 +86,6 @@
           <button data-mode="gradient" title="Exposure ramps from the edges into the core (anti-aliased walls).">Gradient</button>
           <button data-mode="cubic" title="Hollow-cube strut lattice infill (white edges, grey faces/core).">Cubic</button>
           <button data-mode="triangular" title="Buckminster-Fuller-style triangular strut lattice infill.">Triangular</button>
-          <button data-mode="wireframe" title="Outline-only: draw just each layer's perimeter.">Wireframe</button>
         </div>
 
         <div class="mode-panel" data-panel="uniform">
@@ -142,16 +141,6 @@
           <label class="slider" title="Exposure for struts, the rim, and the caps.">White value <output id="o-trwhite">255</output>
             <input type="range" id="tr-white" min="0" max="255" value="255" />
           </label>
-        </div>
-
-        <div class="mode-panel" data-panel="wireframe" hidden>
-          <p class="hint">Draw only each layer's outline. White/Gray = cured outline on void; Black = void outline grooved into a solid body.</p>
-          <div class="segmented" id="wf-color">
-            <button data-wf="white" class="active" title="White outline (255) on void.">White</button>
-            <button data-wf="gray" title="Grey outline (128) on void.">Gray</button>
-            <button data-wf="black" title="Void outline (0) grooved into a solid white body.">Black</button>
-          </div>
-          <label title="Outline thickness in pixels.">Line thickness (px)<input type="number" id="wf-line" value="2" min="0" step="1" /></label>
         </div>
       </section>
 

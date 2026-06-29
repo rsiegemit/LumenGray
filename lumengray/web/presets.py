@@ -146,8 +146,6 @@ def build_preset_mesh(preset_id: str, overrides: dict | None = None) -> trimesh.
 
 def mode_of(config: dict) -> str:
     grayscale = config.get("grayscale", {})
-    if grayscale.get("wireframe"):
-        return "wireframe"
     if grayscale.get("cubic_tessellation"):
         return "cubic_tessellation"
     if grayscale.get("triangular_tessellation"):
