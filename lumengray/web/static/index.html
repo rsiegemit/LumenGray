@@ -152,6 +152,7 @@
             <label title="FCC cube-cell edge across XY, in pixels (node spacing is half this).">Cell XY (px)<input type="number" id="oc-cell-xy" value="14" min="2" step="1" /></label>
             <label title="FCC cube-cell edge in Z, in layers (node spacing is half this).">Cell Z (layers)<input type="number" id="oc-cell-z" value="10" min="2" step="1" /></label>
             <label title="Strut radius, in voxels.">Strut (px)<input type="number" id="oc-strut" value="1" min="1" step="1" /></label>
+            <label title="Void (black) core carved in each cell's deep interior, this many voxels (0 = none).">Black core (px)<input type="number" id="oc-core" value="0" min="0" step="1" /></label>
             <label title="White rim on the outer wall: solid within this many px of the edge (0 = none).">Boundary (px)<input type="number" id="oc-boundary" value="3" min="0" step="1" /></label>
           </div>
           <label class="slider" title="Exposure for the truss faces/core (the grey fill).">Grey core <output id="o-ocgrey">128</output>

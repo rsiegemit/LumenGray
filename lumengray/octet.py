@@ -99,6 +99,37 @@ def _skeleton(shape, z, oct: OctetTessellation) -> np.ndarray:
     return skel
 
 
+def _octa_core(shape, z, oct: OctetTessellation) -> np.ndarray:
+    """Octahedral void cells of the octet truss at layer ``z``. The octahedra are
+    centred on the FCC *anti-nodes* (i+j+k odd) — the octet's natural octahedral
+    holes — with L1 (diamond) radius ``core_px`` pixels in XY."""
+    hx = oct.cell_xy_px / 2.0
+    hz = oct.cell_z_layers / 2.0
+    height, width = shape
+    R = min(0.9, oct.core_px / hx)  # void half-extent in node-index units
+    X, Y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    fi, fj = X / hx, Y / hx
+    fk = z / hz
+    void = np.zeros((height, width), dtype=bool)
+    for k in (int(np.floor(fk)), int(np.floor(fk)) + 1):
+        zoff = abs(fk - k)
+        if zoff >= R:
+            continue
+        parity = 1 - (k & 1)  # i+j parity needed so that i+j+k is odd
+        i = np.round(fi).astype(int)
+        j = np.round(fj).astype(int)
+        wrong = ((i + j) & 1) != parity
+        # fix parity with the smallest move: shift whichever of i/j was rounded least decisively
+        di, dj = np.abs(fi - i), np.abs(fj - j)
+        flip_i = wrong & (di >= dj)
+        flip_j = wrong & ~(di >= dj)
+        i = np.where(flip_i, i + np.where(fi >= i, 1, -1), i)
+        j = np.where(flip_j, j + np.where(fj >= j, 1, -1), j)
+        d = np.abs(fi - i) + np.abs(fj - j) + zoff
+        void |= d < R
+    return void
+
+
 def octet_layer(solid: np.ndarray, layer_index: int, total_layers: int, oct: OctetTessellation) -> np.ndarray:
     """One photostack layer of the octet truss: white struts, grey faces/core,
     solid-white caps, and a white outer-wall rim (1-indexed ``layer_index``)."""
@@ -109,8 +140,15 @@ def octet_layer(solid: np.ndarray, layer_index: int, total_layers: int, oct: Oct
         return np.where(solid, white, layer)  # solid-white cap
 
     z = layer_index - 1 - oct.cap_bottom_layers  # 0 at the first interior layer
-    strut = ndimage.binary_dilation(_skeleton(solid.shape, z, oct), structure=_disk(oct.strut_px))
+    skel = _skeleton(solid.shape, z, oct)
+    strut = ndimage.binary_dilation(skel, structure=_disk(oct.strut_px))
     layer = np.where(solid, np.where(strut, white, np.uint8(oct.grey_value)), layer)
+
+    # Black (void) core: an octahedron (the octet's own void cell) carved at each
+    # cell centre. core_px ≈ the void's half-extent in XY pixels.
+    if oct.core_px > 0:
+        core = _octa_core(solid.shape, z, oct)
+        layer = np.where(solid & core & ~strut, np.uint8(0), layer)
 
     rim = _boundary_mask(solid, oct.boundary_px)
     return np.where(rim, white, layer)
@@ -120,7 +158,7 @@ def octet_layer(solid: np.ndarray, layer_index: int, total_layers: int, oct: Oct
 # of the strut segments (run: python -m lumengray.octet) ──────────────────────
 if __name__ == "__main__":
     from dataclasses import replace
-    oct = OctetTessellation(0, 0, 12, 10, 1, 3, 128, 255)  # cell_xy=12, cell_z=10, strut=1
+    oct = OctetTessellation(0, 0, 12, 10, 1, 0, 3, 128, 255)  # cell_xy=12, cell_z=10, strut=1, core=0
     hx, hz = oct.cell_xy_px / 2.0, oct.cell_z_layers / 2.0
     H = Wd = 48
     shell = float(oct.strut_px)

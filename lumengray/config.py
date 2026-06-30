@@ -54,6 +54,7 @@ DEFAULT_OCTET = {
     "cell_xy_px": 14,  # FCC cube-cell edge in XY pixels (node spacing = half)
     "cell_z_layers": 10,  # FCC cube-cell edge in Z layers (node spacing = half)
     "strut_px": 1,
+    "core_px": 0,  # black void in each cell's deep interior (0 = none)
     "boundary_px": 3,
     "grey_value": 128,
     "white_value": 255,
@@ -140,6 +141,7 @@ class OctetTessellation:
     cell_xy_px: int  # FCC cube-cell edge in XY pixels (node spacing = half this)
     cell_z_layers: int  # FCC cube-cell edge in Z layers (node spacing = half this)
     strut_px: int  # white strut radius (voxels)
+    core_px: int  # black (void) core carved in each cell's deep interior (0 = none)
     boundary_px: int  # per-layer white rim: solid within this many px (L-inf) of an edge
     grey_value: int  # fill for the truss faces / core
     white_value: int  # fill for struts, rim, and caps
@@ -410,6 +412,7 @@ def _build_octet(raw) -> OctetTessellation | None:
         cell_xy_px=cell_xy,
         cell_z_layers=cell_z,
         strut_px=strut,
+        core_px=_int("core_px", 0),
         boundary_px=_int("boundary_px", 0),
         grey_value=grey,
         white_value=white,

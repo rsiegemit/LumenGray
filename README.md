@@ -156,7 +156,9 @@ print(summary["layers"], "masks written")
     "octet_tessellation": {                      // OR the octet truss (Fuller tetrahedra+octahedra)
       "cap_bottom_layers": 2, "cap_top_layers": 2,
       "cell_xy_px": 14, "cell_z_layers": 10,     // FCC cube-cell edge (node spacing = half)
-      "strut_px": 1, "boundary_px": 3, "grey_value": 128, "white_value": 255
+      "strut_px": 1,
+      "core_px": 0,                              // octahedral black-void core per cell (0 = none)
+      "boundary_px": 3, "grey_value": 128, "white_value": 255
     }
   }
 }

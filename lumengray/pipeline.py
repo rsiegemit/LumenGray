@@ -104,6 +104,8 @@ def stack_basename(config: Config, stem: str) -> str:
     if config.octet is not None:
         o = config.octet
         parts.append(f"octet-xy{o.cell_xy_px}-z{o.cell_z_layers}-s{o.strut_px}-b{o.boundary_px}")
+        if o.core_px:
+            parts.append(f"core{o.core_px}")
     elif config.triangulation is not None:
         t = config.triangulation
         parts.append(f"tri-t{t.tri_px}-z{t.z_layers}-s{t.shell_px}-b{t.boundary_px}")

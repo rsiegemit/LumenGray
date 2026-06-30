@@ -168,8 +168,10 @@ def main():
     from lumengray.config import default_octet
 
     out_oct = os.path.join(work, "oct")
-    octsum = run(prism_path, out_oct, _replace(default_config(), octet=default_octet()))
+    oct_cfg = _replace(default_octet(), cell_xy_px=20, cell_z_layers=14, core_px=6)
+    octsum = run(prism_path, out_oct, _replace(default_config(), octet=oct_cfg))
     assert octsum["mode"] == "octet_tessellation", octsum["mode"]
+    assert octsum["name"].endswith("core6"), octsum["name"]  # core is in the parametric name
     octfiles = sorted(f for f in os.listdir(out_oct) if f.endswith(".png"))
     o5 = np.array(Image.open(os.path.join(out_oct, octfiles[4])))  # interior layer
     o6 = np.array(Image.open(os.path.join(out_oct, octfiles[5])))
@@ -177,10 +179,14 @@ def main():
     # sloped struts: the white pattern must shift between adjacent interior layers
     white_moves = int(((o5 == 255) != (o6 == 255)).sum())
     assert white_moves > 0, "octet struts should move in XY between layers (sloped)"
+    # octahedral cores: interior black voids that grow/shrink in Z (not the empty exterior)
+    pfoot = np.array(Image.open(os.path.join(out_tess, tfiles[4]))) > 0
+    oct_black = [int(((np.array(Image.open(os.path.join(out_oct, f))) == 0) & pfoot).sum()) for f in octfiles]
+    assert max(oct_black) > 0, "octet core produced no interior void"
 
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
     print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)
-    print("octet truss:", octsum["layers"], "layers | values {0,128,255} | sloped-strut XY shift px", white_moves)
+    print("octet truss:", octsum["layers"], "layers | values {0,128,255} | sloped-strut XY shift px", white_moves, "| octahedral core max-void px", max(oct_black))
     print("cubic tessellation:", tsum["layers"], "layers | caps+edge-struts+rim verified | strut", strut_col, "core", core_col)
     print("sample output:", out_gray)
 

@@ -64,6 +64,7 @@ export function buildConfig() {
       cell_xy_px: int("oc-cell-xy", 14),
       cell_z_layers: int("oc-cell-z", 10),
       strut_px: int("oc-strut", 1),
+      core_px: int("oc-core", 0),
       boundary_px: int("oc-boundary", 3),
       grey_value: int("oc-grey", 128),
       white_value: int("oc-white", 255),
@@ -104,7 +105,7 @@ export function applyConfig(c) {
     const t = g.octet_tessellation;
     setVal("oc-cap-b", t.cap_bottom_layers); setVal("oc-cap-t", t.cap_top_layers);
     setVal("oc-cell-xy", t.cell_xy_px); setVal("oc-cell-z", t.cell_z_layers); setVal("oc-strut", t.strut_px);
-    setVal("oc-boundary", t.boundary_px); setVal("oc-grey", t.grey_value); setVal("oc-white", t.white_value);
+    setVal("oc-core", t.core_px); setVal("oc-boundary", t.boundary_px); setVal("oc-grey", t.grey_value); setVal("oc-white", t.white_value);
     selectMode("octet");
   } else if (g.gradient) {
     setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);
