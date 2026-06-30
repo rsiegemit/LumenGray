@@ -106,27 +106,25 @@ def _octa_core(shape, z, oct: OctetTessellation) -> np.ndarray:
     hx = oct.cell_xy_px / 2.0
     hz = oct.cell_z_layers / 2.0
     height, width = shape
-    R = min(0.9, oct.core_px / hx)  # void half-extent in node-index units
+    cr = min(float(oct.core_px), 0.9 * hx)  # void L1 half-extent in px (cap keeps struts)
+    thresh = cr + 0.5  # half-pixel margin → the octahedron edge never lands on a pixel
     X, Y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
     fi, fj = X / hx, Y / hx
+    # Anti-nodes (octahedron centres, i+j+k odd) become a regular grid in the
+    # rotated frame u=i+j, v=i-j, where the in-plane L1 distance = Chebyshev
+    # distance to the nearest (parity, parity) point — exact and uniform.
+    fu, fv = fi + fj, fi - fj
     fk = z / hz
     void = np.zeros((height, width), dtype=bool)
     for k in (int(np.floor(fk)), int(np.floor(fk)) + 1):
-        zoff = abs(fk - k)
-        if zoff >= R:
+        zterm = abs(fk - k) * hx  # octahedron shrinks toward its top/bottom vertices
+        if zterm >= thresh:
             continue
-        parity = 1 - (k & 1)  # i+j parity needed so that i+j+k is odd
-        i = np.round(fi).astype(int)
-        j = np.round(fj).astype(int)
-        wrong = ((i + j) & 1) != parity
-        # fix parity with the smallest move: shift whichever of i/j was rounded least decisively
-        di, dj = np.abs(fi - i), np.abs(fj - j)
-        flip_i = wrong & (di >= dj)
-        flip_j = wrong & ~(di >= dj)
-        i = np.where(flip_i, i + np.where(fi >= i, 1, -1), i)
-        j = np.where(flip_j, j + np.where(fj >= j, 1, -1), j)
-        d = np.abs(fi - i) + np.abs(fj - j) + zoff
-        void |= d < R
+        p = (1 - (k & 1)) & 1  # u, v parity so that i+j+k is odd
+        u = np.round((fu - p) / 2.0) * 2 + p
+        v = np.round((fv - p) / 2.0) * 2 + p
+        lxy = hx * np.maximum(np.abs(fu - u), np.abs(fv - v))  # L1 XY distance to centre (px)
+        void |= (lxy + zterm) < thresh
     return void
 
 
