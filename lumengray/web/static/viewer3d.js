@@ -324,7 +324,9 @@ async function makeNative() {
   for (let i = 0; i < n; i++) { const x = cx[i] * pm, y = (H - 1 - cy[i]) * pm; if (x < xmin) xmin = x; if (x > xmax) xmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
   const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
   // Exact voxel-sized boxes → adjacent voxels touch and cores render solid.
-  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(pm, pm, lm), new THREE.MeshLambertMaterial({ vertexColors: true }), n);
+  // Plain material: InstancedMesh applies the per-instance setColorAt() colour
+  // automatically (vertexColors would instead look for a per-vertex attribute).
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(pm, pm, lm), new THREE.MeshLambertMaterial(), n);
   const m4 = new THREE.Matrix4(), c = new THREE.Color();
   for (let i = 0; i < n; i++) {
     m4.makeTranslation(cx[i] * pm - mx, (H - 1 - cy[i]) * pm - my, (cz[i] - 0.5) * lm - h / 2);
