@@ -277,7 +277,8 @@ async function makeBands() {
     }
   });
   const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
-  const hint = `Bands · ${bands.join("+")} · ${shown.toLocaleString()} voxels${data.truncated ? " (capped)" : ""}`;
+  const vum = Math.round(sx * 1000);
+  const hint = `Bands · ${bands.join("+")} · ${shown.toLocaleString()} voxels · ~${vum}µm downsampled preview (use 1:1 for true 35µm)${data.truncated ? " · capped" : ""}`;
   return { obj: group, h, radius, hint };
 }
 
