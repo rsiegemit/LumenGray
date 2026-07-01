@@ -312,10 +312,11 @@ function wire() {
   document.querySelectorAll("#wf3d-style button").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#wf3d-style button").forEach((b) => b.classList.toggle("active", b === btn));
+      updateWfControls();
       refreshView();
     });
   });
-  ["wf3d-tlow", "wf3d-thigh"].forEach((id) => $(id).addEventListener("change", refreshView));
+  ["wf3d-tlow", "wf3d-thigh", "wf3d-lfrom", "wf3d-lto"].forEach((id) => $(id).addEventListener("change", refreshView));
   $("clip-slider").addEventListener("input", applyClip);
 
   // 2D layer scrubber

@@ -182,11 +182,14 @@ function wfKind() {
     : g.cubic_tessellation ? "cubic" : null;
 }
 
-// Show/hide the exposure-band picker: tessellation modes use the procedural
-// strut cage instead, so the white/gray/black + threshold controls don't apply.
+// Show/hide the band picker + the 1:1 slab control by view style. Only the
+// procedural strut cage (tessellation + Cage) ignores the exposure bands.
 export function updateWfControls() {
+  const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
   const wrap = $("wf3d-bandwrap");
-  if (wrap) wrap.hidden = !!wfKind();
+  if (wrap) wrap.hidden = !!wfKind() && style === "cage";
+  const slab = $("wf3d-slab");
+  if (slab) slab.hidden = style !== "native";
 }
 
 function bandOf(v, tLow, tHigh) {
@@ -297,10 +300,52 @@ async function makeCage() {
   return { obj: group, h, radius, hint: `${data.kind} strut cage · ${data.count.toLocaleString()} edges${data.truncated ? " (capped)" : ""}` };
 }
 
-// Dispatch the Wireframe view: tessellation + Cage → procedural strut cage;
-// otherwise the exposure-band voxel view (tessellation + Solid fills all bands).
+// 1:1 machine voxels: every voxel is one print pixel (35×35×50µm), coloured by
+// its real exposure band. Millions of voxels → rendered as points (boxes would
+// be 12× the triangles). Bounded to a layer slab to stay interactive.
+const BAND_RGB = { white: [1, 1, 1], gray: [0.54, 0.54, 0.54], black: [0.31, 0.48, 0.84] };
+async function makeNative() {
+  const { bands, tLow, tHigh } = bandControls();
+  if (!bands.length) return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10, hint: "Pick a band — White / Gray / Black" };
+  const lfrom = parseInt($("wf3d-lfrom")?.value, 10) || 1;
+  const lto = parseInt($("wf3d-lto")?.value, 10) || 0;
+  const res = await fetch("/api/native", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: state.id, config: buildConfig(), bands, t_low: tLow, t_high: tHigh, layer_from: lfrom, layer_to: lto }),
+  });
+  if (!res.ok) throw new Error("native voxels failed");
+  const meta = JSON.parse(res.headers.get("X-Meta"));
+  const buf = await res.arrayBuffer();
+  const n = meta.n, pm = meta.pixel_mm, lm = meta.layer_mm, H = meta.height, h = meta.height_mm;
+  const cx = new Int16Array(buf, 0, n), cy = new Int16Array(buf, 2 * n, n), cz = new Int16Array(buf, 4 * n, n), cb = new Uint8Array(buf, 6 * n, n);
+  const BSHADE = ["white", "gray", "black"];
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  for (let i = 0; i < n; i++) { const x = cx[i] * pm, y = (H - 1 - cy[i]) * pm; if (x < xmin) xmin = x; if (x > xmax) xmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    pos[3 * i] = cx[i] * pm - mx;
+    pos[3 * i + 1] = (H - 1 - cy[i]) * pm - my;
+    pos[3 * i + 2] = (cz[i] - 0.5) * lm - h / 2;
+    const rgb = BAND_RGB[BSHADE[cb[i]]] || BAND_RGB.gray;
+    col[3 * i] = rgb[0]; col[3 * i + 1] = rgb[1]; col[3 * i + 2] = rgb[2];
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: pm * 1.7, vertexColors: true, sizeAttenuation: true }));
+  const group = new THREE.Group();
+  group.add(pts);
+  const radius = Math.max(xmax - xmin, ymax - ymin, (meta.layer_to - meta.layer_from + 1) * lm) * 0.8 || 10;
+  const hint = `1:1 machine voxels · ${n.toLocaleString()}${meta.truncated ? " (capped — narrow bands or the layer range)" : ""} · layers ${meta.layer_from}–${meta.layer_to}/${meta.total_layers}`;
+  return { obj: group, h, radius, hint };
+}
+
+// Dispatch the Wireframe view by style: 1:1 → machine voxels; tessellation +
+// Cage → procedural strut cage; otherwise the exposure-band voxel view.
 async function makeWireframe() {
   const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
+  if (style === "native") return makeNative();
   if (wfKind() && style === "cage") return makeCage();
   return makeBands();
 }

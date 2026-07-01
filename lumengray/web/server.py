@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import gc
 import io
+import json
 import os
 import shutil
 import tempfile
@@ -82,6 +83,17 @@ class VoxelRequest(BaseModel):
     max_voxels: int = 90000
     include_void: bool = False  # also emit interior void voxels (value 0) for the black band
     peak: bool = False  # report each voxel's max exposure (band view) instead of the mean (volume)
+
+
+class NativeRequest(BaseModel):
+    id: str
+    config: dict
+    bands: list[str] = ["white", "gray", "black"]  # which to emit
+    t_low: int = 64  # < t_low → black (lumen, interior void); < t_high → gray; else white
+    t_high: int = 192
+    layer_from: int = 1  # inclusive 1-based Z-slab window (bounds the work + transfer)
+    layer_to: int = 0  # 0 → to the top
+    max_voxels: int = 2_500_000  # hard cap; over this → truncated
 
 
 class CageRequest(BaseModel):
@@ -578,6 +590,72 @@ def create_app() -> FastAPI:
             "count": min(len(segs), req.max_segments),
             "truncated": truncated,
         }
+
+    @app.post("/api/native")
+    def native(req: NativeRequest) -> Response:
+        """1:1 machine-resolution voxels: every voxel is exactly one print pixel
+        (35µm XY) × one layer (50µm Z), coloured by its real exposure and filtered
+        to the requested bands (white=structure, gray=diffusion, black=lumen/void).
+        Streams a compact binary blob (int16 x,y,layer + uint8 band); metadata in
+        the X-Meta header. Capped at max_voxels with a truncated flag."""
+        item = _get(req.id)
+        config = _config(req.config)
+        mesh = _oriented(item, config)
+        total = count_layers(mesh, config.printer)
+        if total == 0:
+            raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
+        pixel_mm = config.printer.pixel_size_um / 1000.0
+        layer_mm = config.printer.layer_height_um / 1000.0
+        width, height = config.printer.resolution
+        regions = resolve_regions(config, canvas_origin(mesh, config.printer, config.center_xy))
+        c0, r0, c1, r1 = _footprint_box(mesh, config)
+        tl, th = req.t_low, req.t_high
+        want = set(req.bands)
+        cols, rows, lays, bnds = [], [], [], []
+        counts = {"white": 0, "gray": 0, "black": 0}
+        nvox, truncated = 0, False
+        lo = max(1, req.layer_from)
+        hi = total if req.layer_to <= 0 else min(total, req.layer_to)
+
+        for L in range(lo, hi + 1):
+            lay = render_layer(slice_index(mesh, config.printer, config.center_xy, L), L, total, config, regions, pixel_mm)
+            crop = lay[r0:r1, c0:c1]
+            picks = []
+            if "white" in want:
+                m = crop >= th; counts["white"] += int(m.sum()); picks.append((m, 0))
+            if "gray" in want:
+                m = (crop >= tl) & (crop < th); counts["gray"] += int(m.sum()); picks.append((m, 1))
+            if "black" in want:  # lumen: interior 0-pixels (enclosed by the part)
+                m = ndimage.binary_fill_holes(crop > 0) & (crop < tl); counts["black"] += int(m.sum()); picks.append((m, 2))
+            for m, bi in picks:
+                yy, xx = np.where(m)
+                if yy.size:
+                    cols.append((xx + c0).astype(np.int16))
+                    rows.append((yy + r0).astype(np.int16))
+                    lays.append(np.full(yy.size, L, np.int16))
+                    bnds.append(np.full(yy.size, bi, np.uint8))
+                    nvox += yy.size
+            del lay, crop
+            if nvox > req.max_voxels:
+                truncated = True
+                break
+
+        if cols:
+            cx = np.concatenate(cols)[: req.max_voxels]
+            cy = np.concatenate(rows)[: req.max_voxels]
+            cz = np.concatenate(lays)[: req.max_voxels]
+            cb = np.concatenate(bnds)[: req.max_voxels]
+        else:
+            cx = cy = cz = np.empty(0, np.int16); cb = np.empty(0, np.uint8)
+        n = int(cx.size)
+        buf = cx.tobytes() + cy.tobytes() + cz.tobytes() + cb.tobytes()
+        meta = {
+            "n": n, "pixel_mm": round(pixel_mm, 5), "layer_mm": round(layer_mm, 5),
+            "height": height, "height_mm": round(total * layer_mm, 4), "total_layers": total,
+            "layer_from": lo, "layer_to": hi, "truncated": truncated, "counts": counts,
+        }
+        gc.collect()
+        return Response(content=buf, media_type="application/octet-stream", headers={"X-Meta": json.dumps(meta)})
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app

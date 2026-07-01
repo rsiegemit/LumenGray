@@ -83,11 +83,14 @@ The **3D model** tab has three orbitable views:
     clipped per layer (each frame to its own slice silhouette, struts only where the
     part is) so it follows curved shapes — letting you see the real structure the voxel
     grid is too coarse to resolve. **Solid** fills it as a voxel body instead.
-  - For **uniform / gradient** modes: isolate the photostack's exposure **bands** —
-    toggle any combination of **white** (high exposure), **gray** (mid), and
-    **black** (interior voids), as a see-through cage or solid blocks, with two
-    editable thresholds. Each voxel is classified by its brightest pixel so thin
-    features stay visible.
+  - Isolate the photostack's exposure **bands** — toggle any combination of
+    **white** (structure), **gray** (diffusion/adhesion), and **black** (lumen /
+    interior voids), with two editable thresholds. **Solid** is a fast downsampled
+    voxel preview; **1:1** renders *true machine voxels* — one point per print
+    pixel (35×35×50 µm) at its real exposure, so it's a literal preview of what the
+    printer lays down. A layer-range slab + the Cutaway keep the millions of
+    voxels interactive; pick a single band to inspect just the structure or the
+    lumen network before printing.
 
 A **Cutaway** slider clips any view to see inside.
 

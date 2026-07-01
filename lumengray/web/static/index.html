@@ -211,23 +211,27 @@
               <button data-tmode="wireframe" title="The print's 3D structure — strut cage for tessellations, exposure bands otherwise.">Wireframe</button>
             </div>
             <div class="wf-panel" id="wf3d-panel" hidden>
-              <div class="segmented small" id="wf3d-style" title="Tessellation: Cage = procedural strut edges (the lattice); Solid = filled voxel body. Other modes: see-through wireframe vs solid blocks.">
+              <div class="segmented small" id="wf3d-style" title="Cage = procedural strut edges (tessellations). Solid = downsampled voxel preview. 1:1 = true machine voxels (one per print pixel).">
                 <button data-style="cage" class="active" title="Strut-edge cage (the triangular/cubic lattice).">Cage</button>
-                <button data-style="solid" title="Solid voxel body.">Solid</button>
+                <button data-style="solid" title="Downsampled voxel preview (fast).">Solid</button>
+                <button data-style="native" title="1:1 machine voxels — each = one 35×35×50µm print pixel, coloured by exposure.">1:1</button>
               </div>
-              <div class="wf-bandwrap" id="wf3d-bandwrap" title="Exposure bands (non-tessellation modes).">
-                <div class="wf-bands" id="wf3d-bands" title="Which exposure bands of the photostack to show in 3D. Combine any.">
+              <div class="wf-bandwrap" id="wf3d-bandwrap" title="Which exposure bands to show: white=structure, gray=diffusion, black=lumen (void).">
+                <div class="wf-bands" id="wf3d-bands" title="white = structure · gray = diffusion/adhesion · black = lumen (empty). Combine any.">
                   <label class="on"><input type="checkbox" value="white" checked />White</label>
                   <label class="on"><input type="checkbox" value="gray" checked />Gray</label>
                   <label><input type="checkbox" value="black" />Black</label>
                 </div>
-                <label class="wf-thresh" title="Values below this are the black (void) band.">
+                <label class="wf-thresh" title="Values below this are the black (lumen/void) band.">
                   Gray&nbsp;≥<input type="number" id="wf3d-tlow" min="1" max="254" value="64" />
                 </label>
-                <label class="wf-thresh" title="Values at or above this are the white band.">
+                <label class="wf-thresh" title="Values at or above this are the white (structure) band.">
                   White&nbsp;≥<input type="number" id="wf3d-thigh" min="2" max="255" value="192" />
                 </label>
               </div>
+              <label class="wf-slab" id="wf3d-slab" hidden title="Which layer range to render at 1:1 — a bounded slab keeps millions of voxels interactive.">
+                Layers&nbsp;<input type="number" id="wf3d-lfrom" min="1" value="1" />–<input type="number" id="wf3d-lto" min="1" value="60" />
+              </label>
             </div>
             <label class="cutaway" title="Slice away part of the model to see inside">
               Cutaway
