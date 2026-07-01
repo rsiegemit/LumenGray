@@ -17,6 +17,7 @@ from .geometry import shape_to_pixels
 from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
+from .gyroid import gyroid_carve
 from .octet import octet_layer
 from .tessellation import tessellation_layer
 from .triangulation import triangulation_layer
@@ -121,6 +122,8 @@ def stack_basename(config: Config, stem: str) -> str:
         parts.append(f"gradient-{g.min}-{g.max}-f{g.falloff_mm:g}")
     else:
         parts.append(f"uniform-v{config.default_solid_value}")
+    if config.gyroid is not None:
+        parts.append(f"gyroid-c{config.gyroid.cell_mm:g}-w{config.gyroid.channel_px}")
     if any(config.rotation_deg):
         parts.append("rot" + "x".join(f"{v:g}" for v in config.rotation_deg))
     return "_".join(parts)
@@ -150,13 +153,16 @@ def _write_manifest(out_dir, config, summary, source, stl_path) -> None:
 def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     """Build one uint8 grayscale layer. Shared by the full run and the live preview."""
     if config.octet is not None:
-        return octet_layer(solid, index, total_layers, config.octet)
-    if config.triangulation is not None:
-        return triangulation_layer(solid, index, total_layers, config.triangulation)
-    if config.tessellation is not None:
-        return tessellation_layer(solid, index, total_layers, config.tessellation)
-    layer = base_layer(solid, config.gradient, config.default_solid_value, pixel_mm)
-    return overlay_regions(layer, solid, index, regions)
+        layer = octet_layer(solid, index, total_layers, config.octet)
+    elif config.triangulation is not None:
+        layer = triangulation_layer(solid, index, total_layers, config.triangulation)
+    elif config.tessellation is not None:
+        layer = tessellation_layer(solid, index, total_layers, config.tessellation)
+    else:
+        layer = overlay_regions(base_layer(solid, config.gradient, config.default_solid_value, pixel_mm), solid, index, regions)
+    if config.gyroid is not None:  # overlay: carve a connected gyroid lumen network
+        layer = gyroid_carve(layer, solid, index, config.printer, config.gyroid)
+    return layer
 
 
 def resolve_regions(config: Config, origin) -> tuple:

@@ -29,8 +29,12 @@ stack update live.
     strut lattice): sloped struts run diagonally between layers, so the cells are true 3D
     pyramids. Defined by its strut segments — a voxel is white when within the strut radius
     of one — so the printed photostack and the 3D cage are one geometry.
+- **Connect voids (gyroid overlay)** — a toggle that carves a continuous gyroid
+  (triply-periodic minimal surface) void through *any* mode's output, threading the
+  isolated black/lumen pockets into one interconnected, drainable perfusion network
+  (a tissue-scaffold vasculature analogue).
 - **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
-  (Mesh / Photostack / Wireframe), hover-tooltips on every parameter, export.
+  (Mesh / Photostack / Wireframe / 1:1 Voxels), hover-tooltips on every parameter, export.
 - **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a
   parameter-encoded zip name; every run is fully described by one JSON config.
 
@@ -162,6 +166,11 @@ print(summary["layers"], "masks written")
       "strut_px": 1,
       "core_px": 0,                              // octahedral black-void core per cell (0 = none)
       "boundary_px": 3, "grey_value": 128, "white_value": 255
+    },
+
+    "connect_voids": {                           // overlay on ANY mode: gyroid lumen-connector
+      "cell_mm": 0.8,                            // gyroid unit-cell period (channel spacing)
+      "channel_px": 4                            // carved void channel width (voxels)
     }
   }
 }
@@ -203,6 +212,7 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 | `tessellation.py` | shared tessellation base + the cubic kind |
 | `triangulation.py` | triangular-prism kind, reusing the shared base |
 | `octet.py` | octet truss (Fuller tetrahedra+octahedra): strut generator + per-layer voxelizer |
+| `gyroid.py` | gyroid void-connector overlay (carves a TPMS lumen network into any layer) |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + `config_to_dict` serializer |
 | `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |

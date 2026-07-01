@@ -184,9 +184,28 @@ def main():
     oct_black = [int(((np.array(Image.open(os.path.join(out_oct, f))) == 0) & pfoot).sum()) for f in octfiles]
     assert max(oct_black) > 0, "octet core produced no interior void"
 
+    # --- gyroid void-connector overlay: carves a connected void into a solid part ---
+    from lumengray.config import default_gyroid
+    from scipy import ndimage as _ndi
+
+    out_gy = os.path.join(work, "gy")
+    gy_cfg = _replace(default_config(), default_solid_value=255, gyroid=_replace(default_gyroid(), cell_mm=0.7, channel_px=4))
+    gysum = run(prism_path, out_gy, gy_cfg)
+    assert "gyroid-c0.7-w4" in gysum["name"], gysum["name"]  # overlay in the parametric name
+    gyfiles = sorted(f for f in os.listdir(out_gy) if f.endswith(".png"))
+    gmid = np.array(Image.open(os.path.join(out_gy, gyfiles[len(gyfiles) // 2])))
+    # a uniform-solid prism has NO voids; the gyroid must carve black channels into it,
+    # and those channels must form far fewer components than isolated dots (connected).
+    gy_black = int((gmid == 0).sum())
+    assert gy_black > 0, "gyroid overlay carved no void into the solid part"
+    vol = np.stack([np.array(Image.open(os.path.join(out_gy, f))) == 0 for f in gyfiles[20:44]])
+    ncomp = int(_ndi.label(vol)[1])
+    assert ncomp < gy_black // 50, f"gyroid void not connected: {ncomp} components"
+
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
     print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)
     print("octet truss:", octsum["layers"], "layers | values {0,128,255} | sloped-strut XY shift px", white_moves, "| octahedral core max-void px", max(oct_black))
+    print("gyroid connector:", gysum["layers"], "layers | carved void px/layer", gy_black, "| connected components", ncomp)
     print("cubic tessellation:", tsum["layers"], "layers | caps+edge-struts+rim verified | strut", strut_col, "core", core_col)
     print("sample output:", out_gray)
 

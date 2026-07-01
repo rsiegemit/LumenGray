@@ -618,15 +618,17 @@ def create_app() -> FastAPI:
         hi = total if req.layer_to <= 0 else min(total, req.layer_to)
 
         for L in range(lo, hi + 1):
-            lay = render_layer(slice_index(mesh, config.printer, config.center_xy, L), L, total, config, regions, pixel_mm)
+            sld = slice_index(mesh, config.printer, config.center_xy, L)
+            lay = render_layer(sld, L, total, config, regions, pixel_mm)
             crop = lay[r0:r1, c0:c1]
             picks = []
             if "white" in want:
                 m = crop >= th; counts["white"] += int(m.sum()); picks.append((m, 0))
             if "gray" in want:
                 m = (crop >= tl) & (crop < th); counts["gray"] += int(m.sum()); picks.append((m, 1))
-            if "black" in want:  # lumen: interior 0-pixels (enclosed by the part)
-                m = ndimage.binary_fill_holes(crop > 0) & (crop < tl); counts["black"] += int(m.sum()); picks.append((m, 2))
+            if "black" in want:  # lumen: void pixels inside the part silhouette (incl. open/drained channels)
+                foot = ndimage.binary_fill_holes(sld[r0:r1, c0:c1])
+                m = foot & (crop < tl); counts["black"] += int(m.sum()); picks.append((m, 2))
             for m, bi in picks:
                 yy, xx = np.where(m)
                 if yy.size:

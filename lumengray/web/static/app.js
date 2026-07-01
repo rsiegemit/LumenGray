@@ -300,6 +300,10 @@ function wire() {
     });
   });
 
+  // gyroid void-connector overlay: show/hide its params (rebuild is handled by
+  // the generic input listener above)
+  $("gyroid-on").addEventListener("change", () => { $("gyroid-params").hidden = !$("gyroid-on").checked; });
+
   // viewer tabs (2D layers / 3D model)
   document.querySelectorAll(".viewer-tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {

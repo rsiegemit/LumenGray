@@ -60,6 +60,12 @@ DEFAULT_OCTET = {
     "white_value": 255,
 }
 
+# Gyroid void-connector overlay defaults (composes on top of any grayscale mode).
+DEFAULT_GYROID = {
+    "cell_mm": 0.8,  # gyroid unit-cell period (mm) — perfusion channel spacing
+    "channel_px": 4,  # carved void channel width (voxels) along the gyroid surface
+}
+
 
 class ConfigError(ValueError):
     """Raised when a config file is malformed."""
@@ -148,6 +154,16 @@ class OctetTessellation:
 
 
 @dataclass(frozen=True)
+class GyroidChannel:
+    """Gyroid void-connector overlay — carves a continuous minimal-surface void
+    through whatever the base grayscale mode produced, threading isolated black
+    (lumen) regions into one interconnected, drainable perfusion network."""
+
+    cell_mm: float  # gyroid unit-cell period in mm (isotropic in printed space)
+    channel_px: int  # carved void channel width, in voxels
+
+
+@dataclass(frozen=True)
 class Config:
     printer: Printer
     default_solid_value: int  # fill value for cured pixels (255 = full exposure)
@@ -158,6 +174,7 @@ class Config:
     tessellation: CubicTessellation | None  # hollow-cube infill; overrides gradient+regions
     triangulation: TriangularTessellation | None  # triangular strut infill; overrides the above
     octet: OctetTessellation | None  # octet-truss infill; overrides the above
+    gyroid: GyroidChannel | None  # gyroid void-connector overlay (composes on any mode)
 
 
 def default_config() -> Config:
@@ -172,6 +189,7 @@ def default_config() -> Config:
         tessellation=None,
         triangulation=None,
         octet=None,
+        gyroid=None,
     )
 
 
@@ -188,6 +206,11 @@ def default_triangular() -> TriangularTessellation:
 def default_octet() -> OctetTessellation:
     """The default octet-truss infill (matches DEFAULT_OCTET)."""
     return OctetTessellation(**DEFAULT_OCTET)
+
+
+def default_gyroid() -> GyroidChannel:
+    """The default gyroid void-connector overlay (matches DEFAULT_GYROID)."""
+    return GyroidChannel(**DEFAULT_GYROID)
 
 
 def load_config(path: str) -> Config:
@@ -227,6 +250,8 @@ def config_to_dict(config: Config) -> dict:
             grayscale["default_solid_value"] = config.default_solid_value
         if config.regions:
             grayscale["regions"] = [asdict(region) for region in config.regions]
+    if config.gyroid is not None:  # overlay — independent of the base mode
+        grayscale["connect_voids"] = asdict(config.gyroid)
     return {
         "printer": {
             "resolution": list(config.printer.resolution),
@@ -256,11 +281,12 @@ def _build_config(raw: dict) -> Config:
     tessellation = _build_tessellation(grayscale.get("cubic_tessellation"))
     triangulation = _build_triangular(grayscale.get("triangular_tessellation"))
     octet = _build_octet(grayscale.get("octet_tessellation"))
+    gyroid = _build_gyroid(grayscale.get("connect_voids"))
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
     return Config(
-        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation, octet
+        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation, octet, gyroid
     )
 
 
@@ -417,6 +443,20 @@ def _build_octet(raw) -> OctetTessellation | None:
         grey_value=grey,
         white_value=white,
     )
+
+
+def _build_gyroid(raw) -> GyroidChannel | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("'grayscale.connect_voids' must be an object")
+    if raw.get("enabled") is False:
+        return None
+    cell_mm = _positive_number(raw.get("cell_mm", DEFAULT_GYROID["cell_mm"]), "grayscale.connect_voids.cell_mm")
+    channel = raw.get("channel_px", DEFAULT_GYROID["channel_px"])
+    if not isinstance(channel, int) or isinstance(channel, bool) or channel < 1:
+        raise ConfigError("grayscale.connect_voids.channel_px must be an integer >= 1")
+    return GyroidChannel(cell_mm=cell_mm, channel_px=channel)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

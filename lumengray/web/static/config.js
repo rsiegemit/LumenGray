@@ -70,6 +70,9 @@ export function buildConfig() {
       white_value: int("oc-white", 255),
     };
   }
+  if ($("gyroid-on")?.checked) {  // overlay — composes on top of any mode
+    config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: int("gy-channel", 4) };
+  }
   return config;
 }
 
@@ -114,6 +117,10 @@ export function applyConfig(c) {
     setVal("solid-value", g.default_solid_value);
     selectMode("uniform");
   }
+  const gy = g.connect_voids;
+  $("gyroid-on").checked = !!gy;
+  if (gy) { setVal("gy-cell", gy.cell_mm); setVal("gy-channel", gy.channel_px); }
+  $("gyroid-params").hidden = !gy;
   updateOutputs();
   refreshConfigJson();
 }

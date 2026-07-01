@@ -157,6 +157,13 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .cutaway input[type=range] { width: 120px; margin: 0; }
 .three-toolbar { flex-wrap: wrap; }
 
+/* Gyroid void-connector overlay */
+.overlay-block { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border, #2a323d); }
+.overlay-head { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text); cursor: pointer; }
+.overlay-head .hint { margin: 0; }
+.overlay-head input { margin: 0; }
+#gyroid-params { margin-top: 8px; }
+
 /* Wireframe band controls */
 .wf-panel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .wf-bandwrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
