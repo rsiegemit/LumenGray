@@ -93,7 +93,7 @@ class NativeRequest(BaseModel):
     t_high: int = 192
     layer_from: int = 1  # inclusive 1-based Z-slab window (bounds the work + transfer)
     layer_to: int = 0  # 0 → to the top
-    max_voxels: int = 2_500_000  # hard cap; over this → truncated
+    max_voxels: int = 1_800_000  # hard cap (solid boxes are memory-heavy); over this → truncated
 
 
 class CageRequest(BaseModel):

@@ -301,10 +301,9 @@ async function makeCage() {
 }
 
 // 1:1 machine voxels: every voxel is one print pixel (35×35×50µm), coloured by
-// its real exposure band. Millions of voxels → rendered as points (boxes would
-// be 12× the triangles). Bounded to a layer slab to stay interactive.
-// black kept just above the 0x11141a background so the lumen reads as near-black
-// (pure black would be invisible on the dark scene).
+// its real exposure band, rendered as solid boxes at exact voxel size so they
+// tile seamlessly (no gaps). Bounded to a layer slab + a cap to stay in memory.
+// black kept just above the 0x11141a background so the lumen reads as near-black.
 const BAND_RGB = { white: [1, 1, 1], gray: [0.54, 0.54, 0.54], black: [0.15, 0.16, 0.19] };
 async function makeNative() {
   const { bands, tLow, tHigh } = bandControls();
@@ -324,20 +323,19 @@ async function makeNative() {
   let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
   for (let i = 0; i < n; i++) { const x = cx[i] * pm, y = (H - 1 - cy[i]) * pm; if (x < xmin) xmin = x; if (x > xmax) xmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
   const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
-  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  // Exact voxel-sized boxes → adjacent voxels touch and cores render solid.
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(pm, pm, lm), new THREE.MeshLambertMaterial({ vertexColors: true }), n);
+  const m4 = new THREE.Matrix4(), c = new THREE.Color();
   for (let i = 0; i < n; i++) {
-    pos[3 * i] = cx[i] * pm - mx;
-    pos[3 * i + 1] = (H - 1 - cy[i]) * pm - my;
-    pos[3 * i + 2] = (cz[i] - 0.5) * lm - h / 2;
+    m4.makeTranslation(cx[i] * pm - mx, (H - 1 - cy[i]) * pm - my, (cz[i] - 0.5) * lm - h / 2);
+    inst.setMatrixAt(i, m4);
     const rgb = BAND_RGB[BSHADE[cb[i]]] || BAND_RGB.gray;
-    col[3 * i] = rgb[0]; col[3 * i + 1] = rgb[1]; col[3 * i + 2] = rgb[2];
+    inst.setColorAt(i, c.setRGB(rgb[0], rgb[1], rgb[2]));
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: pm * 1.7, vertexColors: true, sizeAttenuation: true }));
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
   const group = new THREE.Group();
-  group.add(pts);
+  group.add(inst);
   const radius = Math.max(xmax - xmin, ymax - ymin, (meta.layer_to - meta.layer_from + 1) * lm) * 0.8 || 10;
   const hint = `1:1 machine voxels · ${n.toLocaleString()}${meta.truncated ? " (capped — narrow bands or the layer range)" : ""} · layers ${meta.layer_from}–${meta.layer_to}/${meta.total_layers}`;
   return { obj: group, h, radius, hint };
