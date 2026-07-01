@@ -314,17 +314,10 @@ function wire() {
   document.querySelectorAll("#three-mode button").forEach((btn) => {
     btn.addEventListener("click", () => setThreeMode(btn.dataset.tmode));
   });
-  // wireframe band controls (which exposure bands, cage/solid, thresholds) → rebuild the view
+  // band controls (which exposure bands + thresholds + 1:1 slab) → rebuild the view
   document.querySelectorAll("#wf3d-bands input").forEach((cb) => {
     cb.addEventListener("change", () => {
       cb.closest("label").classList.toggle("on", cb.checked);
-      refreshView();
-    });
-  });
-  document.querySelectorAll("#wf3d-style button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#wf3d-style button").forEach((b) => b.classList.toggle("active", b === btn));
-      updateWfControls();
       refreshView();
     });
   });

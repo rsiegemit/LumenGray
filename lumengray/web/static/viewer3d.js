@@ -190,14 +190,14 @@ function wfKind() {
     : g.cubic_tessellation ? "cubic" : null;
 }
 
-// Show/hide the band picker + the 1:1 slab control by view style. Only the
-// procedural strut cage (tessellation + Cage) ignores the exposure bands.
+// Show/hide the band picker + the 1:1 slab by view. Bands apply to the 1:1
+// voxel view and to the non-tessellation wireframe cage; the slab is 1:1-only.
 export function updateWfControls() {
-  const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
+  const mode = three ? three.mode : "mesh";
   const wrap = $("wf3d-bandwrap");
-  if (wrap) wrap.hidden = !!wfKind() && style === "cage";
+  if (wrap) wrap.hidden = !(mode === "native" || (mode === "wireframe" && !wfKind()));
   const slab = $("wf3d-slab");
-  if (slab) slab.hidden = style !== "native";
+  if (slab) slab.hidden = mode !== "native";
 }
 
 function bandOf(v, tLow, tHigh) {
@@ -352,12 +352,10 @@ async function makeNative() {
   return { obj: group, h, radius, hint };
 }
 
-// Dispatch the Wireframe view by style: 1:1 → machine voxels; tessellation +
-// Cage → procedural strut cage; otherwise the exposure-band voxel view.
+// Wireframe view: tessellation → procedural strut cage; otherwise the
+// exposure-band cage. (The full voxel render is its own top-level "1:1" view.)
 async function makeWireframe() {
-  const style = document.querySelector("#wf3d-style button.active")?.dataset.style || "cage";
-  if (style === "native") return makeNative();
-  if (wfKind() && style === "cage") return makeCage();
+  if (wfKind()) return makeCage();
   return makeBands();
 }
 
@@ -370,8 +368,8 @@ export function refreshView() {
   }
 }
 
-const VIEW_BUILDERS = { stack: makeSlices, wireframe: makeWireframe };
-const VIEW_BUSY = { stack: "Building photostack…", wireframe: "Building 3D structure…" };
+const VIEW_BUILDERS = { stack: makeSlices, wireframe: makeWireframe, native: makeNative };
+const VIEW_BUSY = { stack: "Building photostack…", wireframe: "Building 3D structure…", native: "Building 1:1 voxels…" };
 
 export async function buildView(mode) {
   if (!state.id || !three) return;
@@ -406,11 +404,11 @@ export async function buildView(mode) {
 export async function setThreeMode(mode) {
   document.querySelectorAll("#three-mode button").forEach((b) => b.classList.toggle("active", b.dataset.tmode === mode));
   const panel = $("wf3d-panel");
-  if (panel) panel.hidden = mode !== "wireframe";
-  updateWfControls();
+  if (panel) panel.hidden = !(mode === "wireframe" || mode === "native");
   if (!(await loadThreeLibs())) return;
   try { if (!three) initThree(); } catch (e) { return; }
   three.mode = mode;
+  updateWfControls();
   if (!state.id) return;
   if (mode === "mesh") {
     if (three.stack) three.stack.visible = false;
