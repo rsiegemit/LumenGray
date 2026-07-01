@@ -233,9 +233,13 @@
                 Layers&nbsp;<input type="number" id="wf3d-lfrom" min="1" value="1" />–<input type="number" id="wf3d-lto" min="1" value="60" />
               </label>
             </div>
-            <label class="cutaway" title="Slice away part of the model to see inside">
-              Cutaway
+            <label class="cutaway" title="Vertical cutaway — slice along X (a vertical plane).">
+              Vertical
               <input type="range" id="clip-slider" min="0" max="100" value="100" />
+            </label>
+            <label class="cutaway" title="Horizontal cutaway — slice bottom→top along Z (a horizontal plane).">
+              Horizontal
+              <input type="range" id="clip-slider-z" min="0" max="100" value="100" />
             </label>
             <span class="hint" id="three-hint">Drag to orbit · scroll to zoom · right-drag to pan</span>
           </div>

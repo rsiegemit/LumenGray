@@ -330,6 +330,7 @@ function wire() {
   });
   ["wf3d-tlow", "wf3d-thigh", "wf3d-lfrom", "wf3d-lto"].forEach((id) => $(id).addEventListener("change", refreshView));
   $("clip-slider").addEventListener("input", applyClip);
+  $("clip-slider-z").addEventListener("input", applyClip);
 
   // 2D layer scrubber
   $("layer-slider").addEventListener("input", (e) => { state.index = parseInt(e.target.value, 10); syncSlider(); schedulePreview(); });

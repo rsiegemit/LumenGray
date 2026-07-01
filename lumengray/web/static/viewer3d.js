@@ -47,9 +47,10 @@ function initThree() {
   const grid = new THREE.GridHelper(200, 20, 0x2a323d, 0x1c2229);
   grid.rotation.x = Math.PI / 2; // lay the grid in the XY (build-plate) plane
   scene.add(grid);
-  three = { renderer, scene, camera, controls, grid, mesh: null, stack: null, stackKey: null, mode: "mesh", meshRadius: 10, meshBottom: 0, clipR: 10 };
-  three.clip = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e6); // cutaway plane (off by default)
-  renderer.clippingPlanes = [three.clip];
+  three = { renderer, scene, camera, controls, grid, mesh: null, stack: null, stackKey: null, mode: "mesh", meshRadius: 10, meshBottom: 0, meshHalfH: 10, clipR: 10, clipRz: 10 };
+  three.clipX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e6); // vertical cutaway (slices along X)
+  three.clipZ = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e6); // horizontal cutaway (slices along Z, bottom→top)
+  renderer.clippingPlanes = [three.clipX, three.clipZ];
 
   function resize() {
     const w = wrap.clientWidth, h = wrap.clientHeight;
@@ -77,12 +78,17 @@ function frame(radius) {
   three.controls.update();
 }
 
-// Cutaway: slide the clip plane along X. 100 = whole model; lower = cut more away.
+// Cutaways: Vertical slides a plane along X; Horizontal slides one along Z
+// (bottom→top). 100 = whole model; lower = cut more away.
 export function applyClip() {
   if (!three) return;
-  const frac = parseInt($("clip-slider").value, 10) / 100;
-  const R = three.clipR || 10;
-  three.clip.constant = -R + frac * 2 * R * 1.001;
+  const fx = parseInt($("clip-slider").value, 10) / 100;
+  const Rx = three.clipR || 10;
+  three.clipX.constant = -Rx + fx * 2 * Rx * 1.001;
+  const zEl = $("clip-slider-z");
+  const fz = zEl ? parseInt(zEl.value, 10) / 100 : 1;
+  const Rz = three.clipRz || 10;
+  three.clipZ.constant = -Rz + fz * 2 * Rz * 1.001;
 }
 
 export async function loadModel3D(id) {
@@ -110,11 +116,13 @@ export async function loadModel3D(id) {
       three.mesh = mesh;
       three.meshRadius = geometry.boundingSphere.radius || 10;
       three.meshBottom = geometry.boundingBox.min.z;
+      three.meshHalfH = (geometry.boundingBox.max.z - geometry.boundingBox.min.z) / 2 || 10;
       if (three.mode === "mesh") {
         mesh.visible = true;
         three.grid.position.z = three.meshBottom;
         frame(three.meshRadius);
         three.clipR = three.meshRadius;
+        three.clipRz = three.meshHalfH;
         applyClip();
       } else {
         mesh.visible = false;
@@ -384,6 +392,7 @@ export async function buildView(mode) {
     three.grid.position.z = -built.h / 2;
     frame(built.radius);
     three.clipR = built.radius;
+    three.clipRz = built.h / 2 || 10;
     applyClip();
     $("three-hint").textContent = built.hint;
   } catch (e) {
@@ -404,7 +413,7 @@ export async function setThreeMode(mode) {
   if (!state.id) return;
   if (mode === "mesh") {
     if (three.stack) three.stack.visible = false;
-    if (three.mesh) { three.mesh.visible = true; three.grid.position.z = three.meshBottom; frame(three.meshRadius); three.clipR = three.meshRadius; applyClip(); }
+    if (three.mesh) { three.mesh.visible = true; three.grid.position.z = three.meshBottom; frame(three.meshRadius); three.clipR = three.meshRadius; three.clipRz = three.meshHalfH; applyClip(); }
     $("three-hint").textContent = "Drag to orbit · scroll to zoom · right-drag to pan";
   } else {
     await buildView(mode);
