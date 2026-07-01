@@ -303,7 +303,9 @@ async function makeCage() {
 // 1:1 machine voxels: every voxel is one print pixel (35×35×50µm), coloured by
 // its real exposure band. Millions of voxels → rendered as points (boxes would
 // be 12× the triangles). Bounded to a layer slab to stay interactive.
-const BAND_RGB = { white: [1, 1, 1], gray: [0.54, 0.54, 0.54], black: [0.31, 0.48, 0.84] };
+// black kept just above the 0x11141a background so the lumen reads as near-black
+// (pure black would be invisible on the dark scene).
+const BAND_RGB = { white: [1, 1, 1], gray: [0.54, 0.54, 0.54], black: [0.15, 0.16, 0.19] };
 async function makeNative() {
   const { bands, tLow, tHigh } = bandControls();
   if (!bands.length) return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10, hint: "Pick a band — White / Gray / Black" };

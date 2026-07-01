@@ -144,6 +144,16 @@ function schedulePreview() {
   previewTimer = setTimeout(requestPreview, 120);
 }
 
+// Rebuild the open 3D view when parameters change (debounced — the voxel/native
+// builds are heavy). No-op unless the 3D tab is showing a built view.
+let view3dTimer = null;
+function scheduleView3D() {
+  const model = document.querySelector('.view[data-view="model"]');
+  if (!state.id || !model || model.hidden || currentViewMode() === "mesh") return;
+  clearTimeout(view3dTimer);
+  view3dTimer = setTimeout(refreshView, 500);
+}
+
 async function requestPreview() {
   if (!state.id) return;
   if (state.controller) state.controller.abort();
@@ -271,10 +281,12 @@ function wire() {
   ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, () => dz.classList.remove("drag")));
   dz.addEventListener("drop", (e) => { e.preventDefault(); uploadFile(e.dataTransfer.files[0]); });
 
-  // every control → live config + preview
+  // every control → live config + 2D preview + (debounced) 3D rebuild. The 3D
+  // toolbar controls (bands, cutaway, slab) handle themselves and aren't config.
   document.querySelectorAll("input, #mode-seg button").forEach((el) => {
+    if (el.closest(".three-toolbar")) return;
     const evt = el.type === "range" || el.type === "number" || el.type === "text" ? "input" : "change";
-    el.addEventListener(evt, () => { updateOutputs(); schedulePreview(); });
+    el.addEventListener(evt, () => { updateOutputs(); schedulePreview(); scheduleView3D(); });
   });
 
   // grayscale-mode segmented control
@@ -284,7 +296,7 @@ function wire() {
       schedulePreview();
       // a mode change can switch the wireframe between strut-cage and band view
       updateWfControls();
-      if (currentViewMode() === "wireframe" && state.id) refreshView();
+      scheduleView3D();
     });
   });
 
