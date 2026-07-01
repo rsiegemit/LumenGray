@@ -16,6 +16,7 @@ the network stays isotropic despite the anisotropic 35um-XY / 50um-Z voxels.
 from __future__ import annotations
 
 import numpy as np
+from scipy import ndimage
 
 from .config import GyroidChannel, Printer
 
@@ -30,11 +31,23 @@ def gyroid_carve(layer: np.ndarray, solid: np.ndarray, layer_index: int, printer
 
     x = (np.arange(width, dtype=np.float32) * pixel_mm)[None, :]
     y = (np.arange(height, dtype=np.float32) * pixel_mm)[:, None]
+    sax, cax = np.sin(a * x), np.cos(a * x)
+    say, cay = np.sin(a * y), np.cos(a * y)
     sz, cz = np.sin(a * z), np.cos(a * z)
-    field = np.sin(a * x) * np.cos(a * y) + np.sin(a * y) * cz + sz * np.cos(a * x)
+    field = sax * cay + say * cz + sz * cax
 
-    # |G| < t is a band of half-width ~ t/|grad G| about the surface; |grad G| ~ a,
-    # so a channel of half-width (channel_px/2) voxels → t = a * (channel_px/2 * pixel_mm).
-    t = a * (g.channel_px * pixel_mm / 2.0)
-    channel = np.abs(field) < t
-    return np.where(solid & channel, np.uint8(0), layer)
+    # Distance to the gyroid surface ≈ |G| / |grad G| (grad computed analytically),
+    # so the carved channel is a consistent channel_px voxels wide everywhere and
+    # rasterizes to whole voxels (our minimum unit) — not a variable-width band.
+    gx = cax * cay - sz * sax
+    gy = -sax * say + cay * cz
+    gz = -say * sz + cz * cax
+    grad = np.sqrt(gx * gx + gy * gy + gz * gz) + 1e-6  # = |grad G| / a
+    channel = np.abs(field) < a * (g.channel_px * pixel_mm / 2.0) * grad
+
+    # Keep a solid skin: only carve where the pixel is >= skin_px inside the part
+    # surface, so the void never breaches the boundary (or any internal hole edge).
+    interior = solid
+    if g.skin_px > 0:
+        interior = ndimage.distance_transform_edt(solid) > g.skin_px
+    return np.where(interior & channel, np.uint8(0), layer)

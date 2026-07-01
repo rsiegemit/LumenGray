@@ -64,6 +64,7 @@ DEFAULT_OCTET = {
 DEFAULT_GYROID = {
     "cell_mm": 0.8,  # gyroid unit-cell period (mm) — perfusion channel spacing
     "channel_px": 4,  # carved void channel width (voxels) along the gyroid surface
+    "skin_px": 3,  # solid wall kept around the part boundary (void never breaches it)
 }
 
 
@@ -161,6 +162,7 @@ class GyroidChannel:
 
     cell_mm: float  # gyroid unit-cell period in mm (isotropic in printed space)
     channel_px: int  # carved void channel width, in voxels
+    skin_px: int  # solid wall kept around the boundary; the void never crosses it
 
 
 @dataclass(frozen=True)
@@ -456,7 +458,10 @@ def _build_gyroid(raw) -> GyroidChannel | None:
     channel = raw.get("channel_px", DEFAULT_GYROID["channel_px"])
     if not isinstance(channel, int) or isinstance(channel, bool) or channel < 1:
         raise ConfigError("grayscale.connect_voids.channel_px must be an integer >= 1")
-    return GyroidChannel(cell_mm=cell_mm, channel_px=channel)
+    skin = raw.get("skin_px", DEFAULT_GYROID["skin_px"])
+    if not isinstance(skin, int) or isinstance(skin, bool) or skin < 0:
+        raise ConfigError("grayscale.connect_voids.skin_px must be an integer >= 0")
+    return GyroidChannel(cell_mm=cell_mm, channel_px=channel, skin_px=skin)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

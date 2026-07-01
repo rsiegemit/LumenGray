@@ -201,6 +201,9 @@ def main():
     vol = np.stack([np.array(Image.open(os.path.join(out_gy, f))) == 0 for f in gyfiles[20:44]])
     ncomp = int(_ndi.label(vol)[1])
     assert ncomp < gy_black // 50, f"gyroid void not connected: {ncomp} components"
+    # skin: the void must not breach the boundary — no black in the outer skin_px ring
+    edge = pfoot & ~_ndi.binary_erosion(pfoot, iterations=default_gyroid().skin_px)
+    assert not ((gmid == 0) & edge).any(), "gyroid void breached the boundary skin"
 
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
     print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)

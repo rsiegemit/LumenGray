@@ -168,6 +168,7 @@
           <div class="grid2" id="gyroid-params" hidden>
             <label title="Gyroid unit-cell period in mm — the perfusion channel spacing.">Cell (mm)<input type="number" id="gy-cell" value="0.8" min="0.1" step="0.1" /></label>
             <label title="Carved void channel width, in voxels (≥2px ≈ ≥70µm for cell invasion).">Channel (px)<input type="number" id="gy-channel" value="4" min="1" step="1" /></label>
+            <label title="Solid wall kept around the outer boundary — the void never crosses it (0 = drain to surface).">Skin (px)<input type="number" id="gy-skin" value="3" min="0" step="1" /></label>
           </div>
         </div>
       </section>
