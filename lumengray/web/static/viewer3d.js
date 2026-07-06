@@ -359,6 +359,36 @@ async function makeWireframe() {
   return makeBands();
 }
 
+// Single tessellation unit cell, each voxel coloured by its exposure value
+// (grayscale) — the surface to design the structure→core gradient on.
+async function makeElement() {
+  const data = await postJSON("/api/element", { config: buildConfig(), cells: 2 });
+  if (!data.voxels.length) {
+    return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10,
+      hint: "Element view needs a tessellation mode (Cubic / Triangular Prisms / Octet)" };
+  }
+  const [sx, sy, sz] = data.voxel_size_mm;
+  const h = data.height_mm, vs = data.voxels;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  vs.forEach((v) => { const x = v[0] * sx, y = v[1] * sy; if (x < xmin) xmin = x; if (x > xmax) xmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; });
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
+  // Unlit material so each voxel reads as its TRUE exposure value (no shading
+  // distortion) — this is a gradient-design surface, the grayscale is the data.
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshBasicMaterial(), vs.length);
+  const m = new THREE.Matrix4(), c = new THREE.Color();
+  vs.forEach((v, i) => {
+    inst.setMatrixAt(i, m.makeTranslation(v[0] * sx - mx, v[1] * sy - my, (v[2] - 0.5) * sz - h / 2));
+    const g = Math.max(0.04, v[3] / 255); // grayscale by exposure; floor so the dark core stays visible
+    inst.setColorAt(i, c.setRGB(g, g, g));
+  });
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  const group = new THREE.Group();
+  group.add(inst);
+  const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
+  return { obj: group, h, radius, hint: `Element · ${data.count.toLocaleString()} voxels (grayscale = exposure)` };
+}
+
 // Force a rebuild of the current built view (e.g. a band control changed, which
 // isn't part of the config dedup key).
 export function refreshView() {
@@ -368,8 +398,8 @@ export function refreshView() {
   }
 }
 
-const VIEW_BUILDERS = { stack: makeSlices, wireframe: makeWireframe, native: makeNative };
-const VIEW_BUSY = { stack: "Building photostack…", wireframe: "Building 3D structure…", native: "Building 1:1 voxels…" };
+const VIEW_BUILDERS = { stack: makeSlices, wireframe: makeWireframe, native: makeNative, element: makeElement };
+const VIEW_BUSY = { stack: "Building photostack…", wireframe: "Building 3D structure…", native: "Building 1:1 voxels…", element: "Rendering element…" };
 
 export async function buildView(mode) {
   if (!state.id || !three) return;

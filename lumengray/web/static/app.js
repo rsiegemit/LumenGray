@@ -304,6 +304,16 @@ function wire() {
   // the generic input listener above)
   $("gyroid-on").addEventListener("change", () => { $("gyroid-params").hidden = !$("gyroid-on").checked; });
 
+  // structure→core gradient overlay: toggle params + continuous/piecewise mode
+  $("grade-on").addEventListener("change", () => { $("grade-params").hidden = !$("grade-on").checked; });
+  document.querySelectorAll("#grade-mode button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#grade-mode button").forEach((b) => b.classList.toggle("active", b === btn));
+      $("grade-steps-wrap").hidden = btn.dataset.gmode !== "piecewise";
+      refreshConfigJson(); schedulePreview(); scheduleView3D();
+    });
+  });
+
   // viewer tabs (2D layers / 3D model)
   document.querySelectorAll(".viewer-tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {

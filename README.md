@@ -29,12 +29,16 @@ stack update live.
     strut lattice): sloped struts run diagonally between layers, so the cells are true 3D
     pyramids. Defined by its strut segments — a voxel is white when within the strut radius
     of one — so the printed photostack and the 3D cage are one geometry.
+- **Structure→core gradient** — grade any tessellation cell from white struts inward
+  to a black core with a designable exposure ramp (adjustable **speed** and
+  **continuous vs piecewise** stepped levels) — a functionally-graded material. Design
+  it live on the 3D **Element** view (a single unit cell).
 - **Connect voids (gyroid overlay)** — a toggle that carves a continuous gyroid
   (triply-periodic minimal surface) void through *any* mode's output, threading the
   isolated black/lumen pockets into one interconnected, drainable perfusion network
   (a tissue-scaffold vasculature analogue).
 - **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
-  (Mesh / Photostack / Wireframe / 1:1 Voxels), hover-tooltips on every parameter, export.
+  (Mesh / Photostack / Wireframe / 1:1 Voxels / Element), hover-tooltips on every parameter, export.
 - **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a
   parameter-encoded zip name; every run is fully described by one JSON config.
 
@@ -170,7 +174,13 @@ print(summary["layers"], "masks written")
 
     "connect_voids": {                           // overlay on ANY mode: gyroid lumen-connector
       "cell_mm": 0.8,                            // gyroid unit-cell period (channel spacing)
-      "channel_px": 4                            // carved void channel width (voxels)
+      "channel_px": 4,                           // carved void channel width (voxels)
+      "skin_px": 3                               // solid wall kept at the boundary
+    },
+
+    "grade": {                                   // structure->core exposure ramp (tessellation cells)
+      "speed": 1.0,                              // ramp curve/steepness
+      "steps": 0                                 // 0 = continuous; N>=2 = piecewise levels
     }
   }
 }
@@ -213,6 +223,7 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 | `triangulation.py` | triangular-prism kind, reusing the shared base |
 | `octet.py` | octet truss (Fuller tetrahedra+octahedra): strut generator + per-layer voxelizer |
 | `gyroid.py` | gyroid void-connector overlay (carves a TPMS lumen network into any layer) |
+| `grade.py` | structure→core exposure gradient (distance-from-struts ramp for tessellation cells) |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + `config_to_dict` serializer |
 | `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |

@@ -67,6 +67,12 @@ DEFAULT_GYROID = {
     "skin_px": 3,  # solid wall kept around the part boundary (void never breaches it)
 }
 
+# Structure->core exposure gradient defaults (grades tessellation cells by distance).
+DEFAULT_GRADE = {
+    "speed": 1.0,  # ramp curve/steepness (1 = linear white->black struts->core)
+    "steps": 0,  # 0 = continuous; N>=2 = piecewise (that many discrete grey levels)
+}
+
 
 class ConfigError(ValueError):
     """Raised when a config file is malformed."""
@@ -166,6 +172,16 @@ class GyroidChannel:
 
 
 @dataclass(frozen=True)
+class Grade:
+    """Structure->core exposure gradient for tessellation cells: grade by distance
+    from the white struts inward — white at the structure, black at the cell core,
+    designable speed (curve) and continuous vs piecewise (stepped) profile."""
+
+    speed: float  # ramp steepness/curve (1 = linear)
+    steps: int  # 0 = continuous; N>=2 = piecewise with that many discrete levels
+
+
+@dataclass(frozen=True)
 class Config:
     printer: Printer
     default_solid_value: int  # fill value for cured pixels (255 = full exposure)
@@ -177,6 +193,7 @@ class Config:
     triangulation: TriangularTessellation | None  # triangular strut infill; overrides the above
     octet: OctetTessellation | None  # octet-truss infill; overrides the above
     gyroid: GyroidChannel | None  # gyroid void-connector overlay (composes on any mode)
+    grade: Grade | None  # structure->core exposure gradient for tessellation cells
 
 
 def default_config() -> Config:
@@ -192,6 +209,7 @@ def default_config() -> Config:
         triangulation=None,
         octet=None,
         gyroid=None,
+        grade=None,
     )
 
 
@@ -213,6 +231,11 @@ def default_octet() -> OctetTessellation:
 def default_gyroid() -> GyroidChannel:
     """The default gyroid void-connector overlay (matches DEFAULT_GYROID)."""
     return GyroidChannel(**DEFAULT_GYROID)
+
+
+def default_grade() -> Grade:
+    """The default structure->core exposure gradient (matches DEFAULT_GRADE)."""
+    return Grade(**DEFAULT_GRADE)
 
 
 def load_config(path: str) -> Config:
@@ -254,6 +277,8 @@ def config_to_dict(config: Config) -> dict:
             grayscale["regions"] = [asdict(region) for region in config.regions]
     if config.gyroid is not None:  # overlay — independent of the base mode
         grayscale["connect_voids"] = asdict(config.gyroid)
+    if config.grade is not None:  # structure->core gradient (tessellation cells)
+        grayscale["grade"] = asdict(config.grade)
     return {
         "printer": {
             "resolution": list(config.printer.resolution),
@@ -284,11 +309,12 @@ def _build_config(raw: dict) -> Config:
     triangulation = _build_triangular(grayscale.get("triangular_tessellation"))
     octet = _build_octet(grayscale.get("octet_tessellation"))
     gyroid = _build_gyroid(grayscale.get("connect_voids"))
+    grade = _build_grade(grayscale.get("grade"))
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
     return Config(
-        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation, octet, gyroid
+        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation, octet, gyroid, grade
     )
 
 
@@ -462,6 +488,20 @@ def _build_gyroid(raw) -> GyroidChannel | None:
     if not isinstance(skin, int) or isinstance(skin, bool) or skin < 0:
         raise ConfigError("grayscale.connect_voids.skin_px must be an integer >= 0")
     return GyroidChannel(cell_mm=cell_mm, channel_px=channel, skin_px=skin)
+
+
+def _build_grade(raw) -> Grade | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("'grayscale.grade' must be an object")
+    if raw.get("enabled") is False:
+        return None
+    speed = _positive_number(raw.get("speed", DEFAULT_GRADE["speed"]), "grayscale.grade.speed")
+    steps = raw.get("steps", DEFAULT_GRADE["steps"])
+    if not isinstance(steps, int) or isinstance(steps, bool) or steps < 0 or steps == 1:
+        raise ConfigError("grayscale.grade.steps must be 0 (continuous) or an integer >= 2")
+    return Grade(speed=speed, steps=steps)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

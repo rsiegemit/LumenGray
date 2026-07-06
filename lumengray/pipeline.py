@@ -17,6 +17,7 @@ from .geometry import shape_to_pixels
 from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
+from .grade import grade_layer
 from .gyroid import gyroid_carve
 from .octet import octet_layer
 from .tessellation import tessellation_layer
@@ -122,6 +123,8 @@ def stack_basename(config: Config, stem: str) -> str:
         parts.append(f"gradient-{g.min}-{g.max}-f{g.falloff_mm:g}")
     else:
         parts.append(f"uniform-v{config.default_solid_value}")
+    if config.grade is not None:
+        parts.append(f"grade-s{config.grade.speed:g}" + (f"-p{config.grade.steps}" if config.grade.steps else ""))
     if config.gyroid is not None:
         parts.append(f"gyroid-c{config.gyroid.cell_mm:g}-w{config.gyroid.channel_px}")
     if any(config.rotation_deg):
@@ -160,6 +163,12 @@ def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
         layer = tessellation_layer(solid, index, total_layers, config.tessellation)
     else:
         layer = overlay_regions(base_layer(solid, config.gradient, config.default_solid_value, pixel_mm), solid, index, regions)
+    if config.grade is not None:  # structure->core gradient (tessellation cells only)
+        norm = (config.octet.cell_xy_px / 2.0 if config.octet is not None
+                else config.tessellation.cube_xy_px / 2.0 if config.tessellation is not None
+                else config.triangulation.tri_px / 2.0 if config.triangulation is not None else 0.0)
+        if norm:
+            layer = grade_layer(layer, solid, config.grade, norm)
     if config.gyroid is not None:  # overlay: carve a connected gyroid lumen network
         layer = gyroid_carve(layer, solid, index, config.printer, config.gyroid)
     return layer

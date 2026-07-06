@@ -73,6 +73,10 @@ export function buildConfig() {
   if ($("gyroid-on")?.checked) {  // overlay — composes on top of any mode
     config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: int("gy-channel", 4), skin_px: int("gy-skin", 3) };
   }
+  if ($("grade-on")?.checked) {  // structure→core exposure gradient (tessellation cells)
+    const piece = document.querySelector("#grade-mode button.active")?.dataset.gmode === "piecewise";
+    config.grayscale.grade = { speed: num("grade-speed", 1), steps: piece ? int("grade-steps", 3) : 0 };
+  }
   return config;
 }
 
@@ -121,12 +125,22 @@ export function applyConfig(c) {
   $("gyroid-on").checked = !!gy;
   if (gy) { setVal("gy-cell", gy.cell_mm); setVal("gy-channel", gy.channel_px); setVal("gy-skin", gy.skin_px); }
   $("gyroid-params").hidden = !gy;
+  const gr = g.grade;
+  $("grade-on").checked = !!gr;
+  if (gr) {
+    setVal("grade-speed", gr.speed);
+    const piece = gr.steps >= 2;
+    document.querySelectorAll("#grade-mode button").forEach((b) => b.classList.toggle("active", b.dataset.gmode === (piece ? "piecewise" : "continuous")));
+    if (piece) setVal("grade-steps", gr.steps);
+    $("grade-steps-wrap").hidden = !piece;
+  }
+  $("grade-params").hidden = !gr;
   updateOutputs();
   refreshConfigJson();
 }
 
 // keep slider <output> labels in sync with their inputs
 export function updateOutputs() {
-  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"]];
+  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"], ["grade-speed", "o-gspeed"]];
   pairs.forEach(([inp, out]) => { const o = $(out); if (o) o.textContent = $(inp).value; });
 }

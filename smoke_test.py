@@ -8,7 +8,7 @@ import trimesh
 from PIL import Image
 
 from lumengray.config import default_config, default_tessellation, load_config
-from lumengray.pipeline import run
+from lumengray.pipeline import run, render_layer, stack_basename
 
 
 def main():
@@ -204,6 +204,20 @@ def main():
     # skin: the void must not breach the boundary — no black in the outer skin_px ring
     edge = pfoot & ~_ndi.binary_erosion(pfoot, iterations=default_gyroid().skin_px)
     assert not ((gmid == 0) & edge).any(), "gyroid void breached the boundary skin"
+
+    # --- structure->core gradient: grades octet cells white(struts)->black(core) ---
+    from lumengray.config import default_grade
+
+    oct_base = _replace(default_octet(), cell_xy_px=20, cell_z_layers=14, core_px=0, boundary_px=0)
+    cont = _replace(default_config(), octet=oct_base, grade=_replace(default_grade(), speed=1.0, steps=0))
+    piece = _replace(default_config(), octet=oct_base, grade=_replace(default_grade(), speed=1.0, steps=3))
+    lc = render_layer(np.ones((60, 60), bool), 7, 40, cont, (), 0.035)
+    lp = render_layer(np.ones((60, 60), bool), 7, 40, piece, (), 0.035)
+    n_cont = len(np.unique(lc))
+    piece_vals = set(np.unique(lp).tolist())
+    assert n_cont >= 6, f"continuous grade too flat: {n_cont} values"  # a smooth ramp
+    assert piece_vals <= {0, 128, 255}, piece_vals  # 3-step piecewise: only these levels
+    assert stack_basename(cont, "x").endswith("grade-s1"), stack_basename(cont, "x")
 
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
     print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)

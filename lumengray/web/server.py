@@ -96,6 +96,11 @@ class NativeRequest(BaseModel):
     max_voxels: int = 1_800_000  # hard cap (solid boxes are memory-heavy); over this → truncated
 
 
+class ElementRequest(BaseModel):
+    config: dict
+    cells: int = 2  # how many unit cells across to render
+
+
 class CageRequest(BaseModel):
     id: str
     config: dict
@@ -658,6 +663,40 @@ def create_app() -> FastAPI:
         }
         gc.collect()
         return Response(content=buf, media_type="application/octet-stream", headers={"X-Meta": json.dumps(meta)})
+
+    @app.post("/api/element")
+    def element(req: ElementRequest) -> dict:
+        """Render a single tessellation unit cell (a few cells across) into a
+        synthetic solid block — no mesh needed — so the structure->core gradient
+        can be designed on one element. Returns voxels [col, row, layer, value]."""
+        config = _config(req.config)
+        if config.octet is not None:
+            cx, cz, cb, ct = config.octet.cell_xy_px, config.octet.cell_z_layers, config.octet.cap_bottom_layers, config.octet.cap_top_layers
+        elif config.tessellation is not None:
+            cx, cz, cb, ct = config.tessellation.cube_xy_px, config.tessellation.cube_z_layers, config.tessellation.cap_bottom_layers, config.tessellation.cap_top_layers
+        elif config.triangulation is not None:
+            cx, cz, cb, ct = config.triangulation.tri_px, config.triangulation.z_layers, config.triangulation.cap_bottom_layers, config.triangulation.cap_top_layers
+        else:
+            return {"voxels": [], "voxel_size_mm": [0, 0, 0], "height_mm": 0.0, "count": 0}
+
+        n = max(1, min(4, req.cells))
+        wd = hd = max(8, cx * n)
+        total = cz * n + cb + ct
+        pixel_mm = config.printer.pixel_size_um / 1000.0
+        layer_mm = config.printer.layer_height_um / 1000.0
+        solid = np.ones((hd, wd), dtype=bool)
+        out = []
+        for L in range(cb + 1, total - ct + 1):  # interior only — skip the solid-white caps so the gradient shows
+            lay = render_layer(solid, L, total, config, (), pixel_mm)
+            ys, xs = np.where(lay > 0)  # skip pure-void (black core) voxels
+            for y, x in zip(ys.tolist(), xs.tolist()):
+                out.append([x, y, L, int(lay[y, x])])
+        return {
+            "voxels": out,
+            "voxel_size_mm": [round(pixel_mm, 4), round(pixel_mm, 4), round(layer_mm, 4)],
+            "height_mm": round(total * layer_mm, 4),
+            "count": len(out),
+        }
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app

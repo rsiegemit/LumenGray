@@ -104,6 +104,10 @@ input[type=range]:disabled { opacity: .4; }
 #mode-seg::-webkit-scrollbar { height: 6px; }
 #mode-seg::-webkit-scrollbar-thumb { background: var(--border, #2a323d); border-radius: 3px; }
 #mode-seg button { flex: 1 0 auto; white-space: nowrap; }
+#three-mode { overflow-x: auto; scrollbar-width: thin; max-width: 460px; }
+#three-mode::-webkit-scrollbar { height: 6px; }
+#three-mode::-webkit-scrollbar-thumb { background: var(--border, #2a323d); border-radius: 3px; }
+#three-mode button { flex: 1 0 auto; white-space: nowrap; }
 .mode-panel { margin-top: 14px; }
 
 /* ── Meta / json ─────────────────────────────────────── */
