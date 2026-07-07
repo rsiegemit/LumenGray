@@ -363,30 +363,50 @@ async function makeWireframe() {
 // (grayscale) — the surface to design the structure→core gradient on.
 async function makeElement() {
   const data = await postJSON("/api/element", { config: buildConfig() });
-  if (!data.voxels.length) {
+  if (!data.struts || !data.struts.length) {
     return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10,
       hint: "Element view needs a tessellation mode (Cubic / Triangular Prisms / Octet)" };
   }
-  const [sx, sy, sz] = data.voxel_size_mm;
-  const h = data.height_mm, vs = data.voxels;
-  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-  vs.forEach((v) => { const x = v[0] * sx, y = v[1] * sy; if (x < xmin) xmin = x; if (x > xmax) xmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; });
-  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
-  // Unlit material so each voxel reads as its TRUE exposure value (no shading
-  // distortion) — this is a gradient-design surface, the grayscale is the data.
-  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz), new THREE.MeshBasicMaterial(), vs.length);
-  const m = new THREE.Matrix4(), c = new THREE.Color();
-  vs.forEach((v, i) => {
-    inst.setMatrixAt(i, m.makeTranslation(v[0] * sx - mx, v[1] * sy - my, (v[2] - 0.5) * sz - h / 2));
-    const g = Math.max(0.04, v[3] / 255); // grayscale by exposure; floor so the dark core stays visible
-    inst.setColorAt(i, c.setRGB(g, g, g));
+  // Centre on the actual strut bounds so offset cells (the triangle) frame right.
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity, zmin = Infinity, zmax = -Infinity;
+  data.struts.forEach((s) => {
+    for (let k = 0; k < 6; k += 3) {
+      xmin = Math.min(xmin, s[k]); xmax = Math.max(xmax, s[k]);
+      ymin = Math.min(ymin, s[k + 1]); ymax = Math.max(ymax, s[k + 1]);
+      zmin = Math.min(zmin, s[k + 2]); zmax = Math.max(zmax, s[k + 2]);
+    }
   });
-  inst.instanceMatrix.needsUpdate = true;
-  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2, mz = (zmin + zmax) / 2;
+  const czmm = zmax - zmin;
   const group = new THREE.Group();
-  group.add(inst);
-  const radius = Math.max(xmax - xmin, ymax - ymin, h) * 0.8 || 10;
-  return { obj: group, h, radius, hint: `Element · ${data.count.toLocaleString()} voxels (grayscale = exposure)` };
+
+  // Crisp strut cage — the exact struts of ONE unit cell (this is what makes it
+  // read as a single element).
+  const pts = [];
+  data.struts.forEach((s) => { pts.push(s[0] - mx, s[1] - my, s[2] - mz, s[3] - mx, s[4] - my, s[5] - mz); });
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+  group.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0xffffff })));
+
+  // Graded infill — translucent grey→black voxels inside the cage (the print's
+  // structure→core gradient; unlit so grayscale = true exposure).
+  const vs = data.voxels;
+  if (vs.length) {
+    const [sx, sy, sz] = data.voxel_size_mm;
+    const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4, depthWrite: false }), vs.length);
+    const m = new THREE.Matrix4(), c = new THREE.Color();
+    vs.forEach((v, i) => {
+      inst.setMatrixAt(i, m.makeTranslation(v[0] * sx - mx, v[1] * sy - my, (v[2] - 0.5) * sz - mz));
+      const g = Math.max(0.03, v[3] / 255);
+      inst.setColorAt(i, c.setRGB(g, g, g));
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    group.add(inst);
+  }
+  const radius = Math.max(xmax - xmin, ymax - ymin, czmm) * 0.95 || 10;
+  return { obj: group, h: czmm, radius, hint: `Element · one cell · ${data.count.toLocaleString()} graded voxels` };
 }
 
 // Force a rebuild of the current built view (e.g. a band control changed, which

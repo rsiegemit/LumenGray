@@ -106,6 +106,41 @@ class CageRequest(BaseModel):
     max_segments: int = 120000
 
 
+def _element_cell_struts(config):
+    """Crisp strut segments of exactly ONE unit cell, in voxel coords
+    (ax, ay, az, bx, by, bz) with x,y in pixels and z in layers. Returns
+    (segments, cell_xy_px, cell_z_layers) or None if no tessellation is active.
+
+    An octet/triangular cell isn't a cube, so a voxel *block* can't hold one
+    cleanly — instead we emit the cell's actual struts as lines (the print's
+    graded fill is drawn separately inside this cage)."""
+    if config.octet is not None:
+        cx, cz = config.octet.cell_xy_px, config.octet.cell_z_layers
+        hx, hz = cx / 2.0, cz / 2.0
+        eps = 1e-6
+
+        def inside(x, y, z):
+            return -eps <= x <= cx + eps and -eps <= y <= cx + eps and -eps <= z <= cz + eps
+
+        segs = [s for s in octet_struts(0, 0, cx, cx, 0, cz, hx, hz)
+                if inside(s[0], s[1], s[2]) and inside(s[3], s[4], s[5])]
+        return segs, cx, cz
+    if config.tessellation is not None:
+        p, cz = config.tessellation.cube_xy_px, config.tessellation.cube_z_layers
+        corners = [(0, 0), (p, 0), (p, p), (0, p)]
+        segs = [(c, r, 0, c, r, cz) for c, r in corners]  # 4 vertical edge-columns
+        for z in (0, cz):  # bottom + top square frames
+            segs += [(corners[i][0], corners[i][1], z, corners[(i + 1) % 4][0], corners[(i + 1) % 4][1], z) for i in range(4)]
+        return segs, p, cz
+    if config.triangulation is not None:
+        tp, cz = config.triangulation.tri_px, config.triangulation.z_layers
+        sp = tp * (3.0 ** 0.5) / 2.0  # triangle height (row spacing)
+        verts = [(0.0, 0.0), (float(tp), 0.0), (tp / 2.0, sp)]  # one upward triangle
+        segs = [(c, r, 0, c, r, cz) for c, r in verts]  # 3 vertical edge-columns
+        for z in (0, cz):  # bottom + top triangle frames
+            segs += [(verts[i][0], verts[i][1], z, verts[(i + 1) % 3][0], verts[(i + 1) % 3][1], z) for i in range(3)]
+        return segs, tp, cz
+    return None
 
 
 def create_app() -> FastAPI:
@@ -665,41 +700,57 @@ def create_app() -> FastAPI:
 
     @app.post("/api/element")
     def element(req: ElementRequest) -> dict:
-        """Render a SINGLE tessellation unit cell into a synthetic solid block — no
-        mesh needed — so the structure->core gradient can be designed on one element.
-        The part-level caps and outer-wall rim belong to the whole part, not the
-        repeating unit, so they're zeroed here; the block spans one cell plus the
-        far node plane (cell_px + 1) in XY and one cell (node plane to node plane) in
-        Z. Returns voxels [col, row, layer, value]."""
+        """ONE tessellation unit cell for the gradient designer: the cell's crisp
+        strut segments (drawn as a wireframe cage) plus the print's graded grey->
+        black infill inside it (the structure->core gradient). No mesh needed. The
+        part-level caps and outer-wall rim are zeroed (they're part-level, not the
+        repeating unit). Returns struts [mm segments] + fill voxels [col,row,layer,value]."""
         config = _config(req.config)
+        info = _element_cell_struts(config)
+        if info is None:
+            return {"struts": [], "voxels": [], "cell_mm": [0, 0, 0], "voxel_size_mm": [0, 0, 0], "count": 0}
+        segs_vox, cx, cz = info
         if config.octet is not None:
-            cx, cz = config.octet.cell_xy_px, config.octet.cell_z_layers
+            white = config.octet.white_value
             config = replace(config, octet=replace(config.octet, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         elif config.tessellation is not None:
-            cx, cz = config.tessellation.cube_xy_px, config.tessellation.cube_z_layers
+            white = config.tessellation.white_value
             config = replace(config, tessellation=replace(config.tessellation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
-        elif config.triangulation is not None:
-            cx, cz = config.triangulation.tri_px, config.triangulation.z_layers
-            config = replace(config, triangulation=replace(config.triangulation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         else:
-            return {"voxels": [], "voxel_size_mm": [0, 0, 0], "height_mm": 0.0, "count": 0}
+            white = config.triangulation.white_value
+            config = replace(config, triangulation=replace(config.triangulation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
 
-        wd = hd = cx + 1  # one cell + the far node plane so both bounding struts show
-        total = cz + 1  # one cell tall: node plane (z=0) to node plane (z=cz)
         pixel_mm = config.printer.pixel_size_um / 1000.0
         layer_mm = config.printer.layer_height_um / 1000.0
-        solid = np.ones((hd, wd), dtype=bool)
-        out = []
-        for L in range(1, total + 1):  # caps are zeroed, so every layer is interior
-            lay = render_layer(solid, L, total, config, (), pixel_mm)
-            ys, xs = np.where(lay > 0)  # skip pure-void (black core) voxels
+        struts = [[round(v, 4) for v in (s[0] * pixel_mm, s[1] * pixel_mm, s[2] * layer_mm,
+                                         s[3] * pixel_mm, s[4] * pixel_mm, s[5] * layer_mm)] for s in segs_vox]
+
+        # Graded infill: one cell's interior, keeping only the graded grey->black
+        # fill (< white) — the white struts are drawn as the clean cage above.
+        # One cell's XY footprint: a square for cubic/octet, the actual triangle for
+        # triangular prisms (so the graded fill doesn't bleed into neighbour cells).
+        if config.triangulation is not None:
+            tp = config.triangulation.tri_px
+            sp = tp * (3.0 ** 0.5) / 2.0
+            yy, xx = np.mgrid[0:cx, 0:cx].astype(np.float64)
+            solid = (yy <= sp + 0.5) & (xx >= yy * (tp / 2.0) / sp - 0.5) & (xx <= tp - yy * (tp / 2.0) / sp + 0.5)
+        else:
+            solid = np.ones((cx, cx), dtype=bool)
+        # Keep only the meaningfully-grey infill (the graded core) — the near-strut
+        # bright voxels just add white haze and duplicate the cage.
+        keep_below = int(white * 0.72)
+        fill = []
+        for L in range(1, cz + 1):  # caps zeroed → every layer interior
+            lay = render_layer(solid, L, cz, config, (), pixel_mm)
+            ys, xs = np.where((lay > 0) & (lay < keep_below))
             for y, x in zip(ys.tolist(), xs.tolist()):
-                out.append([x, y, L, int(lay[y, x])])
+                fill.append([x, y, L, int(lay[y, x])])
         return {
-            "voxels": out,
+            "struts": struts,
+            "voxels": fill,
+            "cell_mm": [round(cx * pixel_mm, 4), round(cx * pixel_mm, 4), round(cz * layer_mm, 4)],
             "voxel_size_mm": [round(pixel_mm, 4), round(pixel_mm, 4), round(layer_mm, 4)],
-            "height_mm": round(total * layer_mm, 4),
-            "count": len(out),
+            "count": len(fill),
         }
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
