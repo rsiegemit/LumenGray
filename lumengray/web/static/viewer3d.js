@@ -362,7 +362,7 @@ async function makeWireframe() {
 // Single tessellation unit cell, each voxel coloured by its exposure value
 // (grayscale) — the surface to design the structure→core gradient on.
 async function makeElement() {
-  const data = await postJSON("/api/element", { config: buildConfig(), cells: 2 });
+  const data = await postJSON("/api/element", { config: buildConfig() });
   if (!data.voxels.length) {
     return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10,
       hint: "Element view needs a tessellation mode (Cubic / Triangular Prisms / Octet)" };

@@ -17,7 +17,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import trimesh
@@ -98,7 +98,6 @@ class NativeRequest(BaseModel):
 
 class ElementRequest(BaseModel):
     config: dict
-    cells: int = 2  # how many unit cells across to render
 
 
 class CageRequest(BaseModel):
@@ -666,27 +665,32 @@ def create_app() -> FastAPI:
 
     @app.post("/api/element")
     def element(req: ElementRequest) -> dict:
-        """Render a single tessellation unit cell (a few cells across) into a
-        synthetic solid block — no mesh needed — so the structure->core gradient
-        can be designed on one element. Returns voxels [col, row, layer, value]."""
+        """Render a SINGLE tessellation unit cell into a synthetic solid block — no
+        mesh needed — so the structure->core gradient can be designed on one element.
+        The part-level caps and outer-wall rim belong to the whole part, not the
+        repeating unit, so they're zeroed here; the block spans one cell plus the
+        far node plane (cell_px + 1) in XY and one cell (node plane to node plane) in
+        Z. Returns voxels [col, row, layer, value]."""
         config = _config(req.config)
         if config.octet is not None:
-            cx, cz, cb, ct = config.octet.cell_xy_px, config.octet.cell_z_layers, config.octet.cap_bottom_layers, config.octet.cap_top_layers
+            cx, cz = config.octet.cell_xy_px, config.octet.cell_z_layers
+            config = replace(config, octet=replace(config.octet, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         elif config.tessellation is not None:
-            cx, cz, cb, ct = config.tessellation.cube_xy_px, config.tessellation.cube_z_layers, config.tessellation.cap_bottom_layers, config.tessellation.cap_top_layers
+            cx, cz = config.tessellation.cube_xy_px, config.tessellation.cube_z_layers
+            config = replace(config, tessellation=replace(config.tessellation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         elif config.triangulation is not None:
-            cx, cz, cb, ct = config.triangulation.tri_px, config.triangulation.z_layers, config.triangulation.cap_bottom_layers, config.triangulation.cap_top_layers
+            cx, cz = config.triangulation.tri_px, config.triangulation.z_layers
+            config = replace(config, triangulation=replace(config.triangulation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         else:
             return {"voxels": [], "voxel_size_mm": [0, 0, 0], "height_mm": 0.0, "count": 0}
 
-        n = max(1, min(4, req.cells))
-        wd = hd = max(8, cx * n)
-        total = cz * n + cb + ct
+        wd = hd = cx + 1  # one cell + the far node plane so both bounding struts show
+        total = cz + 1  # one cell tall: node plane (z=0) to node plane (z=cz)
         pixel_mm = config.printer.pixel_size_um / 1000.0
         layer_mm = config.printer.layer_height_um / 1000.0
         solid = np.ones((hd, wd), dtype=bool)
         out = []
-        for L in range(cb + 1, total - ct + 1):  # interior only — skip the solid-white caps so the gradient shows
+        for L in range(1, total + 1):  # caps are zeroed, so every layer is interior
             lay = render_layer(solid, L, total, config, (), pixel_mm)
             ys, xs = np.where(lay > 0)  # skip pure-void (black core) voxels
             for y, x in zip(ys.tolist(), xs.tolist()):
