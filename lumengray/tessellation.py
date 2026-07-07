@@ -48,7 +48,7 @@ def _assemble(solid, layer_index, total_layers, params, z_period, xy_near_count,
     # Black (void) core centred in each cell — only the cell's middle Z layers.
     core_px = params.core_px
     if core_px > 0:
-        z_lo = (z_period - core_px) // 2
+        z_lo = (z_period + params.shell_px - core_px) // 2  # centre between Z frames (frame sits at low shell)
         if z_lo <= z_in < z_lo + core_px:
             layer = np.where(solid & xy_core(solid.shape, core_px), np.uint8(0), layer)
 
@@ -72,8 +72,8 @@ def tessellation_layer(
 
     def xy_core(shape, core):
         height, width = shape
-        col = _axis_center(width, tess.cube_xy_px, core)
-        row = _axis_center(height, tess.cube_xy_px, core)
+        col = _axis_center(width, tess.cube_xy_px, core, tess.shell_px)
+        row = _axis_center(height, tess.cube_xy_px, core, tess.shell_px)
         return col[None, :] & row[:, None]
 
     return _assemble(solid, layer_index, total_layers, tess, tess.cube_z_layers, xy_near, xy_core)
@@ -84,10 +84,13 @@ def _axis_grid(length: int, period: int, shell: int) -> np.ndarray:
     return (np.arange(length) % period) < shell
 
 
-def _axis_center(length: int, period: int, core: int) -> np.ndarray:
-    """Boolean along one axis: True on the central `core` band of each period."""
+def _axis_center(length: int, period: int, core: int, shell: int = 0) -> np.ndarray:
+    """Boolean along one axis: True on the central `core` band of each cell.
+    The strut wall occupies the low `shell` px of each period, so the cell centre
+    sits at (period + shell) / 2 — offset the band by `shell` to keep the core
+    centred between the walls rather than pulled toward the low-side strut."""
     pos = np.arange(length) % period
-    lo = (period - core) // 2
+    lo = (period + shell - core) // 2
     return (pos >= lo) & (pos < lo + core)
 
 
