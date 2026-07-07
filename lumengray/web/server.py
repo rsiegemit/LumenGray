@@ -736,9 +736,10 @@ def create_app() -> FastAPI:
             solid = (yy <= sp + 0.5) & (xx >= yy * (tp / 2.0) / sp - 0.5) & (xx <= tp - yy * (tp / 2.0) / sp + 0.5)
         else:
             solid = np.ones((cx, cx), dtype=bool)
-        # Show only voxels DARKER than the plain grey fill — i.e. the gradient's
-        # darkening toward the core (or an explicit black core). Without a gradient
-        # the fill is uniform grey and nothing shows, leaving just the clean cage.
+        # Show the grey fill and everything darker (the gradient's darkening toward
+        # the core, or an explicit black core) — but NOT the near-strut bright
+        # voxels, which just duplicate the cage. Including plain grey means the cell
+        # is never empty even without a gradient.
         keep_below = grey
         fill = []
         # Render z = 0..cz (node plane to node plane) so the fill spans exactly the
@@ -746,7 +747,7 @@ def create_app() -> FastAPI:
         # (octet layers, 0-based) so cage and fill line up voxel-for-voxel.
         for L in range(1, cz + 2):  # caps zeroed → every layer interior; z = L-1
             lay = render_layer(solid, L, cz + 1, config, (), pixel_mm)
-            ys, xs = np.where(solid & (lay < keep_below))  # inside the cell, darker than grey (incl. black core)
+            ys, xs = np.where(solid & (lay <= keep_below))  # inside the cell, grey or darker (incl. black core)
             for y, x in zip(ys.tolist(), xs.tolist()):
                 fill.append([x, y, L - 1, int(lay[y, x])])
         return {

@@ -11,25 +11,57 @@ export function currentMode() {
   return document.querySelector("#mode-seg button.active").dataset.mode;
 }
 
-// The active mode's black-void core size (px), or 0 if the mode has no cores.
-export function activeCorePx() {
-  const m = currentMode();
-  if (m === "cubic") return int("t-core", 0);
-  if (m === "triangular") return int("tr-core", 0);
-  if (m === "octet") return int("oc-core", 0);
-  return 0;
+const cellPxOf = (m) => (m === "cubic" ? int("t-cube-xy", 6) : m === "triangular" ? int("tr-tri", 10) : m === "octet" ? int("oc-cell-xy", 14) : 0);
+
+// Does the structure→core gradient ramp reach black (value 0)? That carves a
+// black void core too, even without an explicit core_px.
+export function gradeReachesBlack() {
+  if (!$("grade-on")?.checked || $("grade-on").disabled) return false;
+  return getRamp().stops.some((s) => s[1] <= 0);
 }
 
-// Connect voids (gyroid) only makes sense when there ARE voids to connect, so
-// enable it only when the active mode has a black-void core.
+// Radius (px) of the gradient's black core: the ramp hits 0 at normalized
+// distance d0 (0 = struts, 1 = core), so the black shell spans (1-d0) of the
+// cell inradius.
+function gradeBlackRadiusPx(m) {
+  const cellPx = cellPxOf(m);
+  if (!cellPx) return 0;
+  const stops = getRamp().stops; // ascending by position
+  let d0 = 1;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [p0, v0] = stops[i], [p1, v1] = stops[i + 1];
+    if (v0 <= 0) { d0 = p0; break; }
+    if (v1 <= 0) { d0 = p0 + ((p1 - p0) * v0) / (v0 - v1); break; }
+  }
+  return Math.round((1 - d0) * cellPx / 2);
+}
+
+// The active void-core size (px) for channel scaling: the explicit black core,
+// or the gradient's black-core radius, whichever is larger (0 if neither).
+export function activeCorePx() {
+  const m = currentMode();
+  let core = 0;
+  if (m === "cubic") core = int("t-core", 0);
+  else if (m === "triangular") core = int("tr-core", 0);
+  else if (m === "octet") core = int("oc-core", 0);
+  if (gradeReachesBlack()) core = Math.max(core, gradeBlackRadiusPx(m));
+  return core;
+}
+
+// Connect voids (gyroid) only makes sense when there ARE voids to connect: an
+// explicit black core, or a gradient that ramps to black.
+export function hasVoids() {
+  return activeCorePx() > 0 || gradeReachesBlack();
+}
+
 export function updateGyroidAvail() {
-  const on = activeCorePx() > 0;
+  const on = hasVoids();
   const cb = $("gyroid-on");
   cb.disabled = !on;
   if (!on) cb.checked = false;
   $("gyroid-params").hidden = !cb.checked;
   $("gyroid-block").classList.toggle("disabled", !on);
-  $("gyroid-hint").textContent = on ? "— gyroid lumen network" : "— needs a void core";
+  $("gyroid-hint").textContent = on ? "— gyroid lumen network" : "— needs a void core or gradient-to-black";
 }
 
 export function buildConfig() {

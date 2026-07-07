@@ -307,7 +307,7 @@ function wire() {
   $("gyroid-on").addEventListener("change", () => { $("gyroid-params").hidden = !$("gyroid-on").checked; });
 
   // structure→core gradient: the draggable ramp editor + linear/step toggle
-  initRamp($("ramp-editor"), $("ramp-stops"), () => { refreshConfigJson(); schedulePreview(); scheduleView3D(); });
+  initRamp($("ramp-editor"), $("ramp-stops"), () => { updateGyroidAvail(); refreshConfigJson(); schedulePreview(); scheduleView3D(); });
   $("grade-on").addEventListener("change", () => { $("grade-params").hidden = !$("grade-on").checked; });
   document.querySelectorAll("#grade-interp button").forEach((btn) => {
     btn.addEventListener("click", () => {
