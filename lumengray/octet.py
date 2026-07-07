@@ -130,27 +130,43 @@ def _octa_core(shape, z, oct: OctetTessellation) -> np.ndarray:
 
 def octet_core_depth(shape, z, oct: OctetTessellation) -> np.ndarray:
     """Inward-depth field for the structure->core gradient: 0 out at the FCC struts
-    rising to 1 at the octahedral void centre (the cell core). A single 2D slice of
-    the sloped strut lattice is too sparse for a distance transform, so grade
-    radially from the octahedral centres (the octet's own void cells) instead — the
-    same anti-node metric ``_octa_core`` uses — so it flows cleanly inward per cell
-    at every layer. ``z`` = 0 at the first interior layer."""
+    rising to 1 at the void centres (the cell cores). A single 2D slice of the
+    sloped strut lattice is too sparse for a distance transform, so grade radially
+    from the octet's own void cells instead — BOTH void types: the octahedral holes
+    at the anti-nodes (i+j+k odd) and the tetrahedral pockets at the half-integer
+    sites (i+.5, j+.5, k+.5). Distances use the anisotropy-friendly hx/hz metric;
+    the field is the max of the two so both kinds of pocket blacken. ``z`` = 0 at
+    the first interior layer."""
     hx = oct.cell_xy_px / 2.0
     hz = oct.cell_z_layers / 2.0
     height, width = shape
     X, Y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
     fi, fj = X / hx, Y / hx
-    fu, fv = fi + fj, fi - fj  # rotated frame: octahedral centres form a regular grid
     fk = z / hz
+
+    # Octahedral holes: anti-nodes (i+j+k odd) form a regular grid in the rotated
+    # frame u=i+j, v=i-j; Chebyshev distance there = the octahedron's diamond metric.
+    fu, fv = fi + fj, fi - fj
     octa = np.full((height, width), np.inf, dtype=np.float32)
     for k in (int(np.floor(fk)), int(np.floor(fk)) + 1):
         zterm = abs(fk - k) * hx
         p = (1 - (k & 1)) & 1  # anti-node parity so i+j+k is odd
         u = np.round((fu - p) / 2.0) * 2 + p
         v = np.round((fv - p) / 2.0) * 2 + p
-        lxy = hx * np.maximum(np.abs(fu - u), np.abs(fv - v))  # distance to nearest octa centre
+        lxy = hx * np.maximum(np.abs(fu - u), np.abs(fv - v))
         octa = np.minimum(octa, lxy + zterm)
-    return np.clip(1.0 - octa / hx, 0.0, 1.0)  # 1 at the centre (core) -> 0 at the struts
+    d_octa = np.clip(1.0 - octa / hx, 0.0, 1.0)
+
+    # Tetrahedral holes: the eight (i+.5, j+.5, k+.5) sites per cell (the FCC
+    # quarter-cell positions). Nearest in-plane half-integer site + nearest half-
+    # integer Z plane.
+    ti = np.round(fi - 0.5) + 0.5
+    tj = np.round(fj - 0.5) + 0.5
+    txy = hx * np.maximum(np.abs(fi - ti), np.abs(fj - tj))
+    ztet = min(abs(fk - kt) for kt in (np.floor(fk - 0.5) + 0.5, np.floor(fk - 0.5) + 1.5)) * hx
+    d_tet = np.clip(1.0 - (txy + ztet) / (0.7 * hx), 0.0, 1.0)
+
+    return np.maximum(d_octa, d_tet)  # blacken both octahedral and tetrahedral pockets
 
 
 def octet_layer(solid: np.ndarray, layer_index: int, total_layers: int, oct: OctetTessellation) -> np.ndarray:
