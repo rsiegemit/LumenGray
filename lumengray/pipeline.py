@@ -17,11 +17,11 @@ from .geometry import shape_to_pixels
 from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
-from .grade import grade_layer
+from .grade import grade_layer, distance_depth
 from .gyroid import gyroid_carve
-from .octet import octet_layer
+from .octet import octet_layer, octet_core_depth
 from .tessellation import tessellation_layer
-from .triangulation import triangulation_layer
+from .triangulation import triangulation_layer, tri_core_depth
 
 PREVIEW_FILENAME = "_preview.png"
 
@@ -164,11 +164,16 @@ def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     else:
         layer = overlay_regions(base_layer(solid, config.gradient, config.default_solid_value, pixel_mm), solid, index, regions)
     if config.grade is not None:  # structure->core gradient (tessellation cells only)
-        norm = (config.octet.cell_xy_px / 2.0 if config.octet is not None
-                else config.tessellation.cube_xy_px / 2.0 if config.tessellation is not None
-                else config.triangulation.tri_px / 2.0 if config.triangulation is not None else 0.0)
-        if norm:
-            layer = grade_layer(layer, solid, config.grade, norm)
+        if config.octet is not None:
+            z = index - 1 - config.octet.cap_bottom_layers  # 0 at first interior layer
+            depth = octet_core_depth(solid.shape, z, config.octet)
+        elif config.triangulation is not None:
+            depth = tri_core_depth(solid.shape, config.triangulation)
+        elif config.tessellation is not None:
+            depth = distance_depth(layer, config.tessellation.cube_xy_px / 2.0)
+        else:
+            depth = None
+        layer = grade_layer(layer, solid, config.grade, depth)
     if config.gyroid is not None:  # overlay: carve a connected gyroid lumen network
         layer = gyroid_carve(layer, solid, index, config.printer, config.gyroid)
     return layer

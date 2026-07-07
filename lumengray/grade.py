@@ -28,15 +28,23 @@ def _profile(f: np.ndarray, grade: Grade) -> np.ndarray:
     return np.round(out).astype(np.uint8)
 
 
-def grade_layer(layer: np.ndarray, solid: np.ndarray, grade: Grade, norm_px: float) -> np.ndarray:
-    """Replace the non-white fill with a distance-from-structure grayscale ramp.
-    White pixels (struts, rim, caps) are kept; everything else inside the solid is
-    graded by its distance to the nearest white pixel, normalized by ``norm_px``
-    (the cell inradius, so the deepest core reaches black)."""
+def distance_depth(layer: np.ndarray, norm_px: float) -> np.ndarray | None:
+    """Generic inward-depth field for axis-aligned lattices (cubic): distance to
+    the nearest white strut, normalized by the cell inradius ``norm_px`` (0 at the
+    struts -> ~1 at the cell core). Returns None if there are no struts to grade."""
     white = layer == 255
     if not white.any():
-        return layer  # no structure to grade from
+        return None
     d = ndimage.distance_transform_edt(~white)
-    f = np.clip(d / max(1.0, norm_px), 0.0, 1.0)
-    graded = _profile(f, grade)
-    return np.where(solid & ~white, graded, layer)
+    return np.clip(d / max(1.0, norm_px), 0.0, 1.0)
+
+
+def grade_layer(layer: np.ndarray, solid: np.ndarray, grade: Grade, depth: np.ndarray | None) -> np.ndarray:
+    """Replace the non-white fill with the ramp applied to a per-cell inward
+    ``depth`` field (0 at the struts -> 1 at the core). White pixels (struts, rim,
+    caps) are kept. ``depth`` is mode-specific so each element grades cleanly inward
+    (see the tessellation modules); None leaves the layer unchanged."""
+    if depth is None:
+        return layer
+    graded = _profile(np.clip(depth, 0.0, 1.0), grade)
+    return np.where(solid & (layer != 255), graded, layer)

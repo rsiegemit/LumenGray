@@ -128,6 +128,31 @@ def _octa_core(shape, z, oct: OctetTessellation) -> np.ndarray:
     return void
 
 
+def octet_core_depth(shape, z, oct: OctetTessellation) -> np.ndarray:
+    """Inward-depth field for the structure->core gradient: 0 out at the FCC struts
+    rising to 1 at the octahedral void centre (the cell core). A single 2D slice of
+    the sloped strut lattice is too sparse for a distance transform, so grade
+    radially from the octahedral centres (the octet's own void cells) instead — the
+    same anti-node metric ``_octa_core`` uses — so it flows cleanly inward per cell
+    at every layer. ``z`` = 0 at the first interior layer."""
+    hx = oct.cell_xy_px / 2.0
+    hz = oct.cell_z_layers / 2.0
+    height, width = shape
+    X, Y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    fi, fj = X / hx, Y / hx
+    fu, fv = fi + fj, fi - fj  # rotated frame: octahedral centres form a regular grid
+    fk = z / hz
+    octa = np.full((height, width), np.inf, dtype=np.float32)
+    for k in (int(np.floor(fk)), int(np.floor(fk)) + 1):
+        zterm = abs(fk - k) * hx
+        p = (1 - (k & 1)) & 1  # anti-node parity so i+j+k is odd
+        u = np.round((fu - p) / 2.0) * 2 + p
+        v = np.round((fv - p) / 2.0) * 2 + p
+        lxy = hx * np.maximum(np.abs(fu - u), np.abs(fv - v))  # distance to nearest octa centre
+        octa = np.minimum(octa, lxy + zterm)
+    return np.clip(1.0 - octa / hx, 0.0, 1.0)  # 1 at the centre (core) -> 0 at the struts
+
+
 def octet_layer(solid: np.ndarray, layer_index: int, total_layers: int, oct: OctetTessellation) -> np.ndarray:
     """One photostack layer of the octet truss: white struts, grey faces/core,
     solid-white caps, and a white outer-wall rim (1-indexed ``layer_index``)."""
