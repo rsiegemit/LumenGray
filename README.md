@@ -29,15 +29,19 @@ stack update live.
     strut lattice): sloped struts run diagonally between layers, so the cells are true 3D
     pyramids. Defined by its strut segments — a voxel is white when within the strut radius
     of one — so the printed photostack and the 3D cage are one geometry.
-- **Structure→core gradient** — grade any tessellation cell from white struts inward
-  to a black core with a **draggable ramp editor** (add/move/remove points; **linear**
-  or **step**/piecewise) — a functionally-graded material. Design it live on the 3D
-  **Element** view (a single unit cell).
+- **Structure→core gradient** — grade each tessellation cell from its white struts
+  inward to a black core with a **draggable ramp editor** *or* typeable numeric
+  stops (add/move/remove points; **linear** or **step**/piecewise) — a functionally-
+  graded material. The gradient flows inward *per element*: cubic from the struts,
+  triangular from each triangle's edges to its centroid, octet radially into **both**
+  its octahedral and tetrahedral void pockets. Design it live on the 3D **Element**
+  view (one unit cell).
 - **Connect voids (gyroid overlay)** — a toggle that carves a continuous gyroid
   (triply-periodic minimal surface) void through the output, threading the isolated
   black/lumen **cores** into one interconnected, drainable perfusion network (a
-  tissue-scaffold vasculature analogue). Enabled only when there *are* void cores
-  (`core_px > 0`), and the channel width **scales with the core size**.
+  tissue-scaffold vasculature analogue). Enabled only when there *are* voids to
+  connect — an explicit `core_px`, or a gradient that ramps to black — and the
+  channel width **scales with the core size**.
 - **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
   (Mesh / Photostack / Wireframe / 1:1 Voxels / Element), hover-tooltips on every parameter, export.
 - **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a
@@ -94,8 +98,11 @@ The **3D model** tab has five orbitable views:
   **white** (structure) / **gray** (diffusion) / **black** (lumen) bands with editable
   thresholds, and bound a **layer-range slab** to keep the millions of voxels interactive
   (inspect just the structure, or just the lumen network, before printing).
-- **Element** — a single tessellation unit cell, coloured by its true exposure (unlit),
-  for designing the structure→core gradient on one element.
+- **Element** — exactly **one** tessellation unit cell as a crisp white **strut cage**
+  with the graded grey→black infill shown as translucent voxels inside it — the live
+  design surface for the structure→core gradient. The cage is the element's true
+  geometry: a cube for cubic, a prism for triangular, and for octet the faithful
+  **primitive** (1 octahedron + 2 tetrahedra), with the fill isolated to its own voids.
 
 Two **Cutaway** sliders — **Vertical** (slice along X) and **Horizontal** (bottom→top
 along Z) — clip any view to see inside.
@@ -205,9 +212,12 @@ photostack layer in Z — so at the Lumen X3's 35 µm XY / 50 µm Z the cells ar
 
 Two **overlays** compose on top of any of these:
 
-- **`grade`** (`grade.py`) — a structure→core exposure ramp: grade each cell by distance from
-  the white struts inward (white struts → designed greys → black core) via a draggable
-  ramp of `(distance, value)` stops, `linear` or `step`.
+- **`grade`** (`grade.py`) — a structure→core exposure ramp (white struts → designed greys →
+  black core) from a draggable/typeable list of `(distance, value)` stops, `linear` or `step`.
+  Each mode supplies its own per-element inward-depth field (`0` at the struts → `1` at the
+  core) so the gradient flows cleanly inward: cubic by distance from the struts, triangular by
+  distance from each triangle's lines to its centroid, and octet radially from **both** its void
+  types — the octahedral holes (anti-nodes) and the tetrahedral pockets (quarter-cell sites).
 - **`connect_voids`** (`gyroid.py`) — carve a continuous gyroid (triply-periodic minimal
   surface) void through the solid, threading isolated lumen pockets into one interconnected,
   drainable network while keeping a `skin_px` solid wall at the boundary.
@@ -230,9 +240,9 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 | `grayscale.py` | uniform / gradient base fill + region overlay |
 | `tessellation.py` | shared tessellation base + the cubic kind |
 | `triangulation.py` | triangular-prism kind, reusing the shared base |
-| `octet.py` | octet truss (Fuller tetrahedra+octahedra): strut generator + per-layer voxelizer |
+| `octet.py` | octet truss (Fuller tetrahedra+octahedra): strut generator, per-layer voxelizer + gradient depth |
 | `gyroid.py` | gyroid void-connector overlay (carves a TPMS lumen network into any layer) |
-| `grade.py` | structure→core exposure gradient (distance-from-struts ramp for tessellation cells) |
+| `grade.py` | structure→core exposure gradient — applies the ramp to each mode's inward-depth field |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + `config_to_dict` serializer |
 | `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |
