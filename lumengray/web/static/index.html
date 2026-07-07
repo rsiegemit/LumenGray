@@ -163,11 +163,11 @@
           </label>
         </div>
 
-        <div class="overlay-block" title="Carve a continuous gyroid (minimal-surface) void through the part, connecting all isolated black/lumen regions into one interconnected, drainable perfusion network. Composes on top of any mode above.">
-          <label class="overlay-head"><input type="checkbox" id="gyroid-on" /> Connect voids <span class="hint">— gyroid lumen network</span></label>
+        <div class="overlay-block" id="gyroid-block" title="Carve a continuous gyroid (minimal-surface) void through the part, connecting the isolated black/lumen cores into one interconnected, drainable perfusion network. Needs a void core (set 'Black core (px)' > 0); the channel scales with the core size. Composes on top of any mode above.">
+          <label class="overlay-head"><input type="checkbox" id="gyroid-on" /> Connect voids <span class="hint" id="gyroid-hint">— gyroid lumen network</span></label>
           <div class="grid2" id="gyroid-params" hidden>
             <label title="Gyroid unit-cell period in mm — the perfusion channel spacing.">Cell (mm)<input type="number" id="gy-cell" value="0.8" min="0.1" step="0.1" /></label>
-            <label title="Carved void channel width, in voxels (≥2px ≈ ≥70µm for cell invasion).">Channel (px)<input type="number" id="gy-channel" value="4" min="1" step="1" /></label>
+            <label title="Channel width as a multiple of the void core size — the connecting throat scales with the core (× core px, min 2px).">Channel (× core)<input type="number" id="gy-channel" value="1" min="0.1" step="0.1" /></label>
             <label title="Solid wall kept around the outer boundary — the void never crosses it (0 = drain to surface).">Skin (px)<input type="number" id="gy-skin" value="3" min="0" step="1" /></label>
           </div>
         </div>

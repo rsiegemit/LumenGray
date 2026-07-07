@@ -165,6 +165,9 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .overlay-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .overlay-head { flex-direction: row; align-items: center; gap: 9px; font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; }
 .overlay-head input[type=checkbox] { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+.overlay-block.disabled { opacity: .45; }
+.overlay-block.disabled .overlay-head { cursor: not-allowed; }
+.overlay-block.disabled .overlay-head input[type=checkbox] { cursor: not-allowed; }
 .overlay-head .hint { margin: 0; font-weight: 400; }
 #gyroid-params { margin-top: 10px; }
 

@@ -34,9 +34,10 @@ stack update live.
   or **step**/piecewise) — a functionally-graded material. Design it live on the 3D
   **Element** view (a single unit cell).
 - **Connect voids (gyroid overlay)** — a toggle that carves a continuous gyroid
-  (triply-periodic minimal surface) void through *any* mode's output, threading the
-  isolated black/lumen pockets into one interconnected, drainable perfusion network
-  (a tissue-scaffold vasculature analogue).
+  (triply-periodic minimal surface) void through the output, threading the isolated
+  black/lumen **cores** into one interconnected, drainable perfusion network (a
+  tissue-scaffold vasculature analogue). Enabled only when there *are* void cores
+  (`core_px > 0`), and the channel width **scales with the core size**.
 - **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
   (Mesh / Photostack / Wireframe / 1:1 Voxels / Element), hover-tooltips on every parameter, export.
 - **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a

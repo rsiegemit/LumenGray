@@ -11,6 +11,27 @@ export function currentMode() {
   return document.querySelector("#mode-seg button.active").dataset.mode;
 }
 
+// The active mode's black-void core size (px), or 0 if the mode has no cores.
+export function activeCorePx() {
+  const m = currentMode();
+  if (m === "cubic") return int("t-core", 0);
+  if (m === "triangular") return int("tr-core", 0);
+  if (m === "octet") return int("oc-core", 0);
+  return 0;
+}
+
+// Connect voids (gyroid) only makes sense when there ARE voids to connect, so
+// enable it only when the active mode has a black-void core.
+export function updateGyroidAvail() {
+  const on = activeCorePx() > 0;
+  const cb = $("gyroid-on");
+  cb.disabled = !on;
+  if (!on) cb.checked = false;
+  $("gyroid-params").hidden = !cb.checked;
+  $("gyroid-block").classList.toggle("disabled", !on);
+  $("gyroid-hint").textContent = on ? "— gyroid lumen network" : "— needs a void core";
+}
+
 export function buildConfig() {
   const config = {
     printer: {
@@ -71,8 +92,9 @@ export function buildConfig() {
       white_value: int("oc-white", 255),
     };
   }
-  if ($("gyroid-on")?.checked) {  // overlay — composes on top of any mode
-    config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: int("gy-channel", 4), skin_px: int("gy-skin", 3) };
+  if ($("gyroid-on")?.checked && !$("gyroid-on").disabled) {  // overlay — needs void cores
+    const core = activeCorePx();  // channel width scales with the core size (min 2px)
+    config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: Math.max(2, Math.round(num("gy-channel", 1) * core)), skin_px: int("gy-skin", 3) };
   }
   if ($("grade-on")?.checked) {  // structure→core exposure gradient (tessellation cells)
     config.grayscale.grade = getRamp();
@@ -122,9 +144,14 @@ export function applyConfig(c) {
     selectMode("uniform");
   }
   const gy = g.connect_voids;
+  if (gy) {
+    setVal("gy-cell", gy.cell_mm);
+    const core = activeCorePx();  // stored as absolute px; show it back as the × core ratio
+    setVal("gy-channel", core > 0 ? +(gy.channel_px / core).toFixed(2) : 1);
+    setVal("gy-skin", gy.skin_px);
+  }
   $("gyroid-on").checked = !!gy;
-  if (gy) { setVal("gy-cell", gy.cell_mm); setVal("gy-channel", gy.channel_px); setVal("gy-skin", gy.skin_px); }
-  $("gyroid-params").hidden = !gy;
+  updateGyroidAvail();
   const gr = g.grade;
   $("grade-on").checked = !!gr;
   if (gr) {
