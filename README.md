@@ -80,30 +80,26 @@ pick a grayscale mode, drag the sliders, and the **Layer stack** preview re-slic
 (scroll-zoom + drag-pan). Hit **Export stack (.zip)** for the full set of PNG masks plus a
 `manifest.json`.
 
-The **3D model** tab has three orbitable views:
+The **3D model** tab has five orbitable views:
 
 - **Mesh** — the input STL.
 - **Photostack** — the literal rendered layers stacked as thin slices.
-- **Wireframe** —
-  - For **tessellation** modes (cubic / triangular prisms / octet): a **Cage** draws the
-    actual strut lattice — columns + square/triangular frame edges, or the octet's
-    sloped tetrahedra struts — as crisp 3D lines computed from the parameters and
-    clipped per layer (each frame to its own slice silhouette, struts only where the
-    part is) so it follows curved shapes — letting you see the real structure the voxel
-    grid is too coarse to resolve. **Solid** fills it as a voxel body instead.
-  - Isolate the photostack's exposure **bands** — toggle any combination of
-    **white** (structure), **gray** (diffusion/adhesion), and **black** (lumen /
-    interior voids), with two editable thresholds. **Solid** is a fast downsampled
-    voxel preview; **1:1** renders *true machine voxels* — one point per print
-    pixel (35×35×50 µm) at its real exposure, so it's a literal preview of what the
-    printer lays down. A layer-range slab + the Cutaway keep the millions of
-    voxels interactive; pick a single band to inspect just the structure or the
-    lumen network before printing.
+- **Wireframe** — the print's 3D structure. For **tessellation** modes it's a **strut
+  cage** (columns + square/triangular frame edges, or the octet's sloped tetrahedra
+  struts) computed from the parameters and clipped per layer so it follows curved
+  shapes; for other modes it's an exposure-**band** cage.
+- **1:1 Voxels** — *true machine voxels*, one solid box per print pixel (35×35×50 µm) at
+  its real exposure — a literal preview of what the printer lays down. Toggle the
+  **white** (structure) / **gray** (diffusion) / **black** (lumen) bands with editable
+  thresholds, and bound a **layer-range slab** to keep the millions of voxels interactive
+  (inspect just the structure, or just the lumen network, before printing).
+- **Element** — a single tessellation unit cell, coloured by its true exposure (unlit),
+  for designing the structure→core gradient on one element.
 
-A **Cutaway** slider clips any view to see inside.
+Two **Cutaway** sliders — **Vertical** (slice along X) and **Horizontal** (bottom→top
+along Z) — clip any view to see inside.
 
 ![Built-in examples](docs/screenshot-presets.png)
-![3D volume view](docs/screenshot-volume.png)
 ![3D wireframe view](docs/screenshot-wireframe.png)
 
 ## The CLI
@@ -196,12 +192,24 @@ grey faces/core, solid-white caps top and bottom, and a white rim on the part's 
 wall** (solid pixels within `boundary_px` of an edge, L∞ / chessboard — internal channels are
 excluded). An optional **`core_px`** carves a black void in each cell's centre.
 
-Both kinds share one base (`tessellation._assemble`); a *kind* only supplies its XY grid —
-**cubic** uses a square grid (columns + rows), **triangular** uses three line families at
-60° (equilateral triangles). Everything is reasoned about in **voxels** — one voxel is an
-output pixel in XY and one photostack layer in Z — so at the Lumen X3's 35 µm XY / 50 µm Z
-the cells are deliberately *approximate*. Struts live on a single shared grid, so neighbours
-share edges/nodes instead of doubling them.
+**Cubic** and **triangular prisms** share one base (`tessellation._assemble`); a *kind* only
+supplies its XY grid — cubic uses a square grid (columns + rows), triangular uses three line
+families at 60° (equilateral triangles). The **octet truss** (`octet.py`) is separate: an FCC
+nearest-neighbour strut lattice with **sloped** struts between layers, defined by its strut
+segments and voxelized per layer (a voxel is white within the strut radius of one), so the
+print and the 3D cage are the same geometry; its optional core carves an **octahedral** void.
+Everything is reasoned about in **voxels** — one voxel is an output pixel in XY and one
+photostack layer in Z — so at the Lumen X3's 35 µm XY / 50 µm Z the cells are deliberately
+*approximate*.
+
+Two **overlays** compose on top of any of these:
+
+- **`grade`** (`grade.py`) — a structure→core exposure ramp: grade each cell by distance from
+  the white struts inward (white struts → designed greys → black core) via a draggable
+  ramp of `(distance, value)` stops, `linear` or `step`.
+- **`connect_voids`** (`gyroid.py`) — carve a continuous gyroid (triply-periodic minimal
+  surface) void through the solid, threading isolated lumen pockets into one interconnected,
+  drainable network while keeping a `skin_px` solid wall at the boundary.
 
 ---
 
@@ -227,7 +235,7 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + `config_to_dict` serializer |
 | `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |
-| `web/` | FastAPI backend + zero-build ES-module SPA (core/api/config/viewer3d/app) |
+| `web/` | FastAPI backend + zero-build ES-module SPA (core/api/config/viewer3d/ramp/app) |
 
 ### Metadata & naming
 
@@ -240,7 +248,8 @@ named from those parameters, e.g. `Rectangular-prism_50um_cubic-xy6-z6-s1-b3_cor
 
 ```bash
 pip install -e ".[web]"
-python smoke_test.py    # end-to-end: regions, gradient, rotation, cubic + triangular tessellation, manifest
+python smoke_test.py    # end-to-end: regions, gradient, rotation, cubic/triangular/octet tessellation,
+                        # octahedral cores, gyroid void-connector, structure→core grade, manifest
 ```
 
 ## License
