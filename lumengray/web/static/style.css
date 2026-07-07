@@ -161,21 +161,33 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .cutaway input[type=range] { width: 120px; margin: 0; }
 .three-toolbar { flex-wrap: wrap; }
 
-/* Structure→core ramp editor */
-.ramp-wrap { display: flex; align-items: center; gap: 5px; margin-top: 6px; }
+/* ── Overlay toggles (gyroid connector, structure→core gradient) ── */
+.overlay-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.overlay-head { flex-direction: row; align-items: center; gap: 9px; font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; }
+.overlay-head input[type=checkbox] { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+.overlay-head .hint { margin: 0; font-weight: 400; }
+#gyroid-params { margin-top: 10px; }
+
+/* ── Structure→core ramp editor ── */
+.ramp-wrap { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
 .ramp-ax { font-size: 9px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); white-space: nowrap; }
 #ramp-editor { flex: 1; min-width: 0; }
-.ramp-svg { width: 100%; height: auto; display: block; background: var(--card-2); border-radius: 6px; touch-action: none; cursor: crosshair; }
+.ramp-svg { width: 100%; height: auto; display: block; background: var(--card-2); border-radius: 8px; touch-action: none; cursor: crosshair; }
 .ramp-curve { fill: none; stroke: var(--accent); stroke-width: 1.6; }
 .ramp-stop { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: grab; }
 .ramp-stop:hover { fill: var(--accent); }
 
-/* Gyroid void-connector overlay */
-.overlay-block { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border, #2a323d); }
-.overlay-head { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text); cursor: pointer; }
-.overlay-head .hint { margin: 0; }
-.overlay-head input { margin: 0; }
-#gyroid-params { margin-top: 8px; }
+/* numeric stop fields — a typeable alternative to dragging the curve */
+.ramp-stops { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.ramp-head, .ramp-row { display: grid; grid-template-columns: 1fr 1fr 30px; gap: 6px; align-items: center; }
+.ramp-head { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: 0 2px; }
+.ramp-row input[type=number] { padding: 6px 8px; font-size: 12px; text-align: center; }
+.ramp-row input[type=number]:disabled { opacity: .5; }
+.ramp-del { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; height: 30px; font-size: 16px; line-height: 1; cursor: pointer; transition: all .15s; }
+.ramp-del:hover:not(:disabled) { border-color: #e5484d; color: #e5484d; }
+.ramp-del:disabled { opacity: .3; cursor: default; }
+.ramp-add { margin-top: 2px; background: transparent; border: 1px dashed var(--line); color: var(--muted); padding: 7px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all .15s; }
+.ramp-add:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Wireframe band controls */
 .wf-panel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

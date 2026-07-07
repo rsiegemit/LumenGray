@@ -1,12 +1,14 @@
-// Draggable structure->core ramp editor. X = normalized distance from the struts
-// (0 = struts, left) to 1 (core, right); Y = exposure value (255 white top .. 0
-// black bottom). Drag points, click empty space to add, double-click to remove.
+// Draggable structure->core ramp editor + numeric stop fields (two views of the
+// same ramp). X = normalized distance from the struts (0 = struts, left) to 1
+// (core, right); Y = exposure value (255 white top .. 0 black bottom). Drag
+// points, click empty space to add, double-click to remove — or type exact
+// distance %/value in the fields below.
 
 const NS = "http://www.w3.org/2000/svg";
 let stops = [[0, 255], [1, 0]];
 let interp = "linear";
 let onChange = () => {};
-let svg;
+let svg, fieldsEl;
 const W = 240, H = 112, pad = 12;
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -15,13 +17,14 @@ const Y = (v) => pad + (1 - v / 255) * (H - 2 * pad);
 const toPos = (x) => clamp((x - pad) / (W - 2 * pad), 0, 1);
 const toVal = (y) => clamp(Math.round((1 - (y - pad) / (H - 2 * pad)) * 255), 0, 255);
 
-export function initRamp(container, changeCb) {
+export function initRamp(svgContainer, fieldsContainer, changeCb) {
   onChange = changeCb || (() => {});
+  fieldsEl = fieldsContainer;
   svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.classList.add("ramp-svg");
   svg.addEventListener("pointerdown", onBackgroundDown);
-  container.appendChild(svg);
+  svgContainer.appendChild(svg);
   render();
 }
 
@@ -36,6 +39,12 @@ export function setRamp(r) {
 }
 
 export function setInterp(mode) { interp = mode === "step" ? "step" : "linear"; render(); onChange(); }
+
+function normalize() {  // keep sorted + endpoints pinned to the full 0..1 span
+  stops.sort((a, b) => a[0] - b[0]);
+  stops[0] = [0, stops[0][1]];
+  stops[stops.length - 1] = [1, stops[stops.length - 1][1]];
+}
 
 function pt(e) {
   const r = svg.getBoundingClientRect();
@@ -77,6 +86,11 @@ function el(name, attrs) {
 }
 
 function render() {
+  renderCurve();
+  renderFields();
+}
+
+function renderCurve() {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const defs = el("defs", {});
   const grad = el("linearGradient", { id: "rampgrad", x1: "0", x2: "1", y1: "0", y2: "0" });
@@ -103,4 +117,48 @@ function render() {
     });
     svg.appendChild(c);
   });
+}
+
+function numInput(value, min, max, disabled, commit) {
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.min = min; inp.max = max; inp.step = 1; inp.value = value; inp.disabled = disabled;
+  inp.addEventListener("change", () => commit(clamp(Math.round(parseFloat(inp.value) || 0), min, max)));
+  return inp;
+}
+
+function renderFields() {
+  if (!fieldsEl) return;
+  fieldsEl.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "ramp-head";
+  head.innerHTML = "<span>Dist&nbsp;%</span><span>Value</span><span></span>";
+  fieldsEl.appendChild(head);
+
+  stops.forEach((s, i) => {
+    const isEnd = i === 0 || i === stops.length - 1;
+    const row = document.createElement("div");
+    row.className = "ramp-row";
+    row.appendChild(numInput(Math.round(s[0] * 100), 0, 100, isEnd, (p) => {
+      stops[i] = [p / 100, stops[i][1]]; normalize(); render(); onChange();
+    }));
+    row.appendChild(numInput(s[1], 0, 255, false, (v) => {
+      stops[i] = [stops[i][0], v]; render(); onChange();
+    }));
+    const del = document.createElement("button");
+    del.className = "ramp-del"; del.textContent = "×"; del.title = "Remove point";
+    del.disabled = stops.length <= 2 || isEnd;
+    del.addEventListener("click", () => { if (stops.length > 2 && !isEnd) { stops.splice(i, 1); render(); onChange(); } });
+    row.appendChild(del);
+    fieldsEl.appendChild(row);
+  });
+
+  const add = document.createElement("button");
+  add.className = "ramp-add"; add.textContent = "+ Add point";
+  add.addEventListener("click", () => {
+    let gi = 0, gmax = -1;
+    for (let i = 0; i < stops.length - 1; i++) { const g = stops[i + 1][0] - stops[i][0]; if (g > gmax) { gmax = g; gi = i; } }
+    stops.splice(gi + 1, 0, [(stops[gi][0] + stops[gi + 1][0]) / 2, Math.round((stops[gi][1] + stops[gi + 1][1]) / 2)]);
+    render(); onChange();
+  });
+  fieldsEl.appendChild(add);
 }
