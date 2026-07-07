@@ -109,7 +109,9 @@ class CageRequest(BaseModel):
 def _element_cell_struts(config):
     """Crisp strut segments of exactly ONE unit cell, in voxel coords
     (ax, ay, az, bx, by, bz) with x,y in pixels and z in layers. Returns
-    (segments, cell_xy_px, cell_z_layers) or None if no tessellation is active.
+    (segments, cell_xy_px, cell_z_layers, hull_nodes) or None if no tessellation
+    is active. ``hull_nodes`` (octet only) are the cell's corner nodes, used to
+    clip the graded fill to the primitive's convex hull.
 
     An octet/triangular cell isn't a cube, so a voxel *block* can't hold one
     cleanly — instead we emit the cell's actual struts as lines (the print's
@@ -117,21 +119,27 @@ def _element_cell_struts(config):
     if config.octet is not None:
         cx, cz = config.octet.cell_xy_px, config.octet.cell_z_layers
         hx, hz = cx / 2.0, cz / 2.0
-        eps = 1e-6
 
-        def inside(x, y, z):
-            return -eps <= x <= cx + eps and -eps <= y <= cx + eps and -eps <= z <= cz + eps
+        def P(i, j, k):
+            return (i * hx, j * hx, k * hz)
 
-        segs = [s for s in octet_struts(0, 0, cx, cx, 0, cz, hx, hz)
-                if inside(s[0], s[1], s[2]) and inside(s[3], s[4], s[5])]
-        return segs, cx, cz
+        # The octet truss's faithful primitive unit: one octahedron centred on the
+        # cell (anti-node (1,1,1)) with a tetrahedron capping two opposite faces
+        # (apexes at the (0,0,0) and (2,2,2) corners) = 1 octahedron + 2 tetrahedra,
+        # the tet:oct = 2:1 repeating unit that actually fills space.
+        A, B, C, D, E, F = P(0, 1, 1), P(2, 1, 1), P(1, 0, 1), P(1, 2, 1), P(1, 1, 0), P(1, 1, 2)
+        G, H = P(0, 0, 0), P(2, 2, 2)
+        oct_edges = [(A, C), (A, D), (A, E), (A, F), (B, C), (B, D), (B, E), (B, F), (C, E), (C, F), (D, E), (D, F)]
+        tet_edges = [(H, B), (H, D), (H, F), (G, A), (G, C), (G, E)]
+        segs = [(*p, *q) for p, q in oct_edges + tet_edges]
+        return segs, cx, cz, [A, B, C, D, E, F, G, H]
     if config.tessellation is not None:
         p, cz = config.tessellation.cube_xy_px, config.tessellation.cube_z_layers
         corners = [(0, 0), (p, 0), (p, p), (0, p)]
         segs = [(c, r, 0, c, r, cz) for c, r in corners]  # 4 vertical edge-columns
         for z in (0, cz):  # bottom + top square frames
             segs += [(corners[i][0], corners[i][1], z, corners[(i + 1) % 4][0], corners[(i + 1) % 4][1], z) for i in range(4)]
-        return segs, p, cz
+        return segs, p, cz, None
     if config.triangulation is not None:
         tp, cz = config.triangulation.tri_px, config.triangulation.z_layers
         sp = tp * (3.0 ** 0.5) / 2.0  # triangle height (row spacing)
@@ -139,7 +147,7 @@ def _element_cell_struts(config):
         segs = [(c, r, 0, c, r, cz) for c, r in verts]  # 3 vertical edge-columns
         for z in (0, cz):  # bottom + top triangle frames
             segs += [(verts[i][0], verts[i][1], z, verts[(i + 1) % 3][0], verts[(i + 1) % 3][1], z) for i in range(3)]
-        return segs, tp, cz
+        return segs, tp, cz, None
     return None
 
 
@@ -709,7 +717,7 @@ def create_app() -> FastAPI:
         info = _element_cell_struts(config)
         if info is None:
             return {"struts": [], "voxels": [], "cell_mm": [0, 0, 0], "voxel_size_mm": [0, 0, 0], "count": 0}
-        segs_vox, cx, cz = info
+        segs_vox, cx, cz, hull_nodes = info
         if config.octet is not None:
             grey = config.octet.grey_value
             config = replace(config, octet=replace(config.octet, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
@@ -729,6 +737,7 @@ def create_app() -> FastAPI:
         # fill (< white) — the white struts are drawn as the clean cage above.
         # One cell's XY footprint: a square for cubic/octet, the actual triangle for
         # triangular prisms (so the graded fill doesn't bleed into neighbour cells).
+        hull = None
         if config.triangulation is not None:
             tp = config.triangulation.tri_px
             sp = tp * (3.0 ** 0.5) / 2.0
@@ -736,6 +745,11 @@ def create_app() -> FastAPI:
             solid = (yy <= sp + 0.5) & (xx >= yy * (tp / 2.0) / sp - 0.5) & (xx <= tp - yy * (tp / 2.0) / sp + 0.5)
         else:
             solid = np.ones((cx, cx), dtype=bool)
+            if hull_nodes is not None:  # octet: clip the fill to the primitive's convex hull
+                from scipy.spatial import Delaunay
+                hull = Delaunay(np.array(hull_nodes, dtype=np.float64))
+                gy, gx = np.mgrid[0:cx, 0:cx]
+                grid_xy = np.column_stack([gx.ravel().astype(np.float64), gy.ravel().astype(np.float64)])
         # Show the grey fill and everything darker (the gradient's darkening toward
         # the core, or an explicit black core) — but NOT the near-strut bright
         # voxels, which just duplicate the cage. Including plain grey means the cell
@@ -747,7 +761,11 @@ def create_app() -> FastAPI:
         # (octet layers, 0-based) so cage and fill line up voxel-for-voxel.
         for L in range(1, cz + 2):  # caps zeroed → every layer interior; z = L-1
             lay = render_layer(solid, L, cz + 1, config, (), pixel_mm)
-            ys, xs = np.where(solid & (lay <= keep_below))  # inside the cell, grey or darker (incl. black core)
+            keep = solid & (lay <= keep_below)  # inside the cell, grey or darker (incl. black core)
+            if hull is not None:  # keep only voxels inside the octet primitive at this z
+                pts = np.column_stack([grid_xy, np.full(len(grid_xy), float(L - 1))])
+                keep &= (hull.find_simplex(pts) >= 0).reshape(cx, cx)
+            ys, xs = np.where(keep)
             for y, x in zip(ys.tolist(), xs.tolist()):
                 fill.append([x, y, L - 1, int(lay[y, x])])
         return {
