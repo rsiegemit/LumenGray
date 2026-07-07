@@ -69,8 +69,8 @@ DEFAULT_GYROID = {
 
 # Structure->core exposure gradient defaults (grades tessellation cells by distance).
 DEFAULT_GRADE = {
-    "speed": 1.0,  # ramp curve/steepness (1 = linear white->black struts->core)
-    "steps": 0,  # 0 = continuous; N>=2 = piecewise (that many discrete grey levels)
+    "stops": [[0.0, 255], [1.0, 0]],  # ramp control points: (distance 0=struts..1=core, value)
+    "interp": "linear",  # "linear" (continuous) or "step" (piecewise)
 }
 
 
@@ -174,11 +174,12 @@ class GyroidChannel:
 @dataclass(frozen=True)
 class Grade:
     """Structure->core exposure gradient for tessellation cells: grade by distance
-    from the white struts inward — white at the structure, black at the cell core,
-    designable speed (curve) and continuous vs piecewise (stepped) profile."""
+    from the white struts inward via a designable ramp of (distance, value) stops
+    — white at the structure to black at the cell core, ``linear`` (continuous) or
+    ``step`` (piecewise) between stops."""
 
-    speed: float  # ramp steepness/curve (1 = linear)
-    steps: int  # 0 = continuous; N>=2 = piecewise with that many discrete levels
+    stops: tuple  # ascending (pos in [0,1], value in [0,255]) control points
+    interp: str  # "linear" | "step"
 
 
 @dataclass(frozen=True)
@@ -235,7 +236,7 @@ def default_gyroid() -> GyroidChannel:
 
 def default_grade() -> Grade:
     """The default structure->core exposure gradient (matches DEFAULT_GRADE)."""
-    return Grade(**DEFAULT_GRADE)
+    return Grade(stops=tuple(tuple(s) for s in DEFAULT_GRADE["stops"]), interp=DEFAULT_GRADE["interp"])
 
 
 def load_config(path: str) -> Config:
@@ -497,11 +498,22 @@ def _build_grade(raw) -> Grade | None:
         raise ConfigError("'grayscale.grade' must be an object")
     if raw.get("enabled") is False:
         return None
-    speed = _positive_number(raw.get("speed", DEFAULT_GRADE["speed"]), "grayscale.grade.speed")
-    steps = raw.get("steps", DEFAULT_GRADE["steps"])
-    if not isinstance(steps, int) or isinstance(steps, bool) or steps < 0 or steps == 1:
-        raise ConfigError("grayscale.grade.steps must be 0 (continuous) or an integer >= 2")
-    return Grade(speed=speed, steps=steps)
+    interp = raw.get("interp", DEFAULT_GRADE["interp"])
+    if interp not in ("linear", "step"):
+        raise ConfigError("grayscale.grade.interp must be 'linear' or 'step'")
+    raw_stops = raw.get("stops", DEFAULT_GRADE["stops"])
+    if not isinstance(raw_stops, list) or len(raw_stops) < 2:
+        raise ConfigError("grayscale.grade.stops must be a list of at least 2 [pos, value] pairs")
+    stops = []
+    for item in raw_stops:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise ConfigError("each grayscale.grade stop must be [pos, value]")
+        pos, value = item
+        if not isinstance(pos, (int, float)) or isinstance(pos, bool) or not (0.0 <= pos <= 1.0):
+            raise ConfigError("grayscale.grade stop pos must be a number in [0, 1]")
+        stops.append((float(pos), _validate_value(value, "grayscale.grade stop value")))
+    stops.sort()
+    return Grade(stops=tuple(stops), interp=interp)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

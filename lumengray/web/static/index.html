@@ -175,14 +175,16 @@
         <div class="overlay-block" title="Grade tessellation cells from the white struts inward to a black core — a functionally-graded exposure ramp. Preview/design it on the 3D 'Element' view.">
           <label class="overlay-head"><input type="checkbox" id="grade-on" /> Structure→core gradient <span class="hint">— white struts → black core</span></label>
           <div id="grade-params" hidden>
-            <label class="slider" title="Ramp steepness — higher reaches black faster from the struts.">Speed <output id="o-gspeed">1.0</output>
-              <input type="range" id="grade-speed" min="0.2" max="4" step="0.1" value="1" />
-            </label>
-            <div class="segmented small" id="grade-mode" title="Continuous smooth ramp vs discrete stepped grey levels.">
-              <button data-gmode="continuous" class="active" title="Smooth ramp through every grey.">Continuous</button>
-              <button data-gmode="piecewise" title="Discrete stepped levels (e.g. white → 128 → black).">Piecewise</button>
+            <div class="segmented small" id="grade-interp" title="Interpolation between ramp points: smooth (Linear) or stepped (Step / piecewise).">
+              <button data-interp="linear" class="active" title="Smooth ramp through every grey.">Linear</button>
+              <button data-interp="step" title="Hold each level until the next point (piecewise).">Step</button>
             </div>
-            <label id="grade-steps-wrap" hidden title="Number of discrete levels, including white and black (3 = white/grey/black).">Levels<input type="number" id="grade-steps" value="3" min="2" step="1" /></label>
+            <div class="ramp-wrap" title="Structure→core ramp: left = struts (white), right = core (black). Drag points · click to add · double-click to remove.">
+              <span class="ramp-ax ramp-ax-l">struts</span>
+              <div id="ramp-editor"></div>
+              <span class="ramp-ax ramp-ax-r">core</span>
+            </div>
+            <p class="hint">Drag points · click to add · double-click to remove.</p>
           </div>
         </div>
       </section>

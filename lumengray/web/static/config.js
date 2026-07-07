@@ -2,6 +2,7 @@
 // config object back into the controls (used by presets / "load config").
 
 import { $, setVal } from "./core.js";
+import { getRamp, setRamp } from "./ramp.js";
 
 const int = (id, d) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) ? v : d; };
 const num = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : d; };
@@ -74,8 +75,7 @@ export function buildConfig() {
     config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: int("gy-channel", 4), skin_px: int("gy-skin", 3) };
   }
   if ($("grade-on")?.checked) {  // structure→core exposure gradient (tessellation cells)
-    const piece = document.querySelector("#grade-mode button.active")?.dataset.gmode === "piecewise";
-    config.grayscale.grade = { speed: num("grade-speed", 1), steps: piece ? int("grade-steps", 3) : 0 };
+    config.grayscale.grade = getRamp();
   }
   return config;
 }
@@ -128,11 +128,8 @@ export function applyConfig(c) {
   const gr = g.grade;
   $("grade-on").checked = !!gr;
   if (gr) {
-    setVal("grade-speed", gr.speed);
-    const piece = gr.steps >= 2;
-    document.querySelectorAll("#grade-mode button").forEach((b) => b.classList.toggle("active", b.dataset.gmode === (piece ? "piecewise" : "continuous")));
-    if (piece) setVal("grade-steps", gr.steps);
-    $("grade-steps-wrap").hidden = !piece;
+    setRamp(gr);
+    document.querySelectorAll("#grade-interp button").forEach((b) => b.classList.toggle("active", b.dataset.interp === (gr.interp || "linear")));
   }
   $("grade-params").hidden = !gr;
   updateOutputs();
@@ -141,6 +138,6 @@ export function applyConfig(c) {
 
 // keep slider <output> labels in sync with their inputs
 export function updateOutputs() {
-  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"], ["grade-speed", "o-gspeed"]];
+  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"]];
   pairs.forEach(([inp, out]) => { const o = $(out); if (o) o.textContent = $(inp).value; });
 }

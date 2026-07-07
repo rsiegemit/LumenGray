@@ -124,7 +124,7 @@ def stack_basename(config: Config, stem: str) -> str:
     else:
         parts.append(f"uniform-v{config.default_solid_value}")
     if config.grade is not None:
-        parts.append(f"grade-s{config.grade.speed:g}" + (f"-p{config.grade.steps}" if config.grade.steps else ""))
+        parts.append(f"grade-{config.grade.interp[:3]}{len(config.grade.stops)}")
     if config.gyroid is not None:
         parts.append(f"gyroid-c{config.gyroid.cell_mm:g}-w{config.gyroid.channel_px}")
     if any(config.rotation_deg):

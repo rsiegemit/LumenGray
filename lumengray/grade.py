@@ -15,13 +15,17 @@ from .config import Grade
 
 
 def _profile(f: np.ndarray, grade: Grade) -> np.ndarray:
-    """Map normalized distance-from-structure ``f`` (0 at struts -> 1 at core) to
-    an 8-bit exposure: 255 at the struts down to 0 at the core, curved by ``speed``
-    and optionally quantized into ``steps`` discrete levels (0 = continuous)."""
-    base = np.clip(1.0 - f, 0.0, 1.0) ** grade.speed  # 1 at struts -> 0 at core
-    if grade.steps >= 2:
-        base = np.round(base * (grade.steps - 1)) / (grade.steps - 1)
-    return np.round(base * 255.0).astype(np.uint8)
+    """Map normalized distance-from-structure ``f`` (0 at struts -> 1 at core) to an
+    8-bit exposure via the ramp's (pos, value) stops — ``linear`` interpolates
+    between them, ``step`` holds each stop's value until the next."""
+    pos = np.array([s[0] for s in grade.stops], dtype=np.float64)
+    val = np.array([s[1] for s in grade.stops], dtype=np.float64)
+    if grade.interp == "step":
+        idx = np.clip(np.searchsorted(pos, f, side="right") - 1, 0, len(val) - 1)
+        out = val[idx]
+    else:
+        out = np.interp(f, pos, val)  # clamps to the end values outside [pos0, posN]
+    return np.round(out).astype(np.uint8)
 
 
 def grade_layer(layer: np.ndarray, solid: np.ndarray, grade: Grade, norm_px: float) -> np.ndarray:

@@ -5,6 +5,7 @@ import { $, state, status, downloadBlob } from "./core.js";
 import { postJSON } from "./api.js";
 import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs } from "./config.js";
 import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView, updateWfControls } from "./viewer3d.js";
+import { initRamp, setInterp } from "./ramp.js";
 
 // ── Presets ──────────────────────────────────────────────
 const svg = (inner) =>
@@ -304,13 +305,13 @@ function wire() {
   // the generic input listener above)
   $("gyroid-on").addEventListener("change", () => { $("gyroid-params").hidden = !$("gyroid-on").checked; });
 
-  // structure→core gradient overlay: toggle params + continuous/piecewise mode
+  // structure→core gradient: the draggable ramp editor + linear/step toggle
+  initRamp($("ramp-editor"), () => { refreshConfigJson(); schedulePreview(); scheduleView3D(); });
   $("grade-on").addEventListener("change", () => { $("grade-params").hidden = !$("grade-on").checked; });
-  document.querySelectorAll("#grade-mode button").forEach((btn) => {
+  document.querySelectorAll("#grade-interp button").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll("#grade-mode button").forEach((b) => b.classList.toggle("active", b === btn));
-      $("grade-steps-wrap").hidden = btn.dataset.gmode !== "piecewise";
-      refreshConfigJson(); schedulePreview(); scheduleView3D();
+      document.querySelectorAll("#grade-interp button").forEach((b) => b.classList.toggle("active", b === btn));
+      setInterp(btn.dataset.interp); // triggers the ramp onChange → rebuild
     });
   });
 

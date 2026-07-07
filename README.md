@@ -30,9 +30,9 @@ stack update live.
     pyramids. Defined by its strut segments — a voxel is white when within the strut radius
     of one — so the printed photostack and the 3D cage are one geometry.
 - **Structure→core gradient** — grade any tessellation cell from white struts inward
-  to a black core with a designable exposure ramp (adjustable **speed** and
-  **continuous vs piecewise** stepped levels) — a functionally-graded material. Design
-  it live on the 3D **Element** view (a single unit cell).
+  to a black core with a **draggable ramp editor** (add/move/remove points; **linear**
+  or **step**/piecewise) — a functionally-graded material. Design it live on the 3D
+  **Element** view (a single unit cell).
 - **Connect voids (gyroid overlay)** — a toggle that carves a continuous gyroid
   (triply-periodic minimal surface) void through *any* mode's output, threading the
   isolated black/lumen pockets into one interconnected, drainable perfusion network
@@ -179,8 +179,8 @@ print(summary["layers"], "masks written")
     },
 
     "grade": {                                   // structure->core exposure ramp (tessellation cells)
-      "speed": 1.0,                              // ramp curve/steepness
-      "steps": 0                                 // 0 = continuous; N>=2 = piecewise levels
+      "stops": [[0.0, 255], [1.0, 0]],           // (distance 0=struts..1=core, value) control points
+      "interp": "linear"                         // "linear" (continuous) or "step" (piecewise)
     }
   }
 }
