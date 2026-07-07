@@ -711,13 +711,13 @@ def create_app() -> FastAPI:
             return {"struts": [], "voxels": [], "cell_mm": [0, 0, 0], "voxel_size_mm": [0, 0, 0], "count": 0}
         segs_vox, cx, cz = info
         if config.octet is not None:
-            white = config.octet.white_value
+            grey = config.octet.grey_value
             config = replace(config, octet=replace(config.octet, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         elif config.tessellation is not None:
-            white = config.tessellation.white_value
+            grey = config.tessellation.grey_value
             config = replace(config, tessellation=replace(config.tessellation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
         else:
-            white = config.triangulation.white_value
+            grey = config.triangulation.grey_value
             config = replace(config, triangulation=replace(config.triangulation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
 
         pixel_mm = config.printer.pixel_size_um / 1000.0
@@ -736,15 +736,19 @@ def create_app() -> FastAPI:
             solid = (yy <= sp + 0.5) & (xx >= yy * (tp / 2.0) / sp - 0.5) & (xx <= tp - yy * (tp / 2.0) / sp + 0.5)
         else:
             solid = np.ones((cx, cx), dtype=bool)
-        # Keep only the meaningfully-grey infill (the graded core) — the near-strut
-        # bright voxels just add white haze and duplicate the cage.
-        keep_below = int(white * 0.72)
+        # Show only voxels DARKER than the plain grey fill — i.e. the gradient's
+        # darkening toward the core (or an explicit black core). Without a gradient
+        # the fill is uniform grey and nothing shows, leaving just the clean cage.
+        keep_below = grey
         fill = []
-        for L in range(1, cz + 1):  # caps zeroed → every layer interior
-            lay = render_layer(solid, L, cz, config, (), pixel_mm)
-            ys, xs = np.where((lay > 0) & (lay < keep_below))
+        # Render z = 0..cz (node plane to node plane) so the fill spans exactly the
+        # same range as the strut cage; store z in the SAME units as the struts
+        # (octet layers, 0-based) so cage and fill line up voxel-for-voxel.
+        for L in range(1, cz + 2):  # caps zeroed → every layer interior; z = L-1
+            lay = render_layer(solid, L, cz + 1, config, (), pixel_mm)
+            ys, xs = np.where(solid & (lay < keep_below))  # inside the cell, darker than grey (incl. black core)
             for y, x in zip(ys.tolist(), xs.tolist()):
-                fill.append([x, y, L, int(lay[y, x])])
+                fill.append([x, y, L - 1, int(lay[y, x])])
         return {
             "struts": struts,
             "voxels": fill,

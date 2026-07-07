@@ -394,11 +394,11 @@ async function makeElement() {
   if (vs.length) {
     const [sx, sy, sz] = data.voxel_size_mm;
     const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(sx, sy, sz),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4, depthWrite: false }), vs.length);
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false }), vs.length);
     const m = new THREE.Matrix4(), c = new THREE.Color();
     vs.forEach((v, i) => {
-      inst.setMatrixAt(i, m.makeTranslation(v[0] * sx - mx, v[1] * sy - my, (v[2] - 0.5) * sz - mz));
-      const g = Math.max(0.03, v[3] / 255);
+      inst.setMatrixAt(i, m.makeTranslation(v[0] * sx - mx, v[1] * sy - my, v[2] * sz - mz));
+      const g = Math.max(0.12, v[3] / 255); // floor so void/black cores read as dark grey, not invisible
       inst.setColorAt(i, c.setRGB(g, g, g));
     });
     inst.instanceMatrix.needsUpdate = true;
