@@ -13,9 +13,10 @@ from dataclasses import asdict, dataclass
 
 # Lumen X3 optical specs from Protocol.pdf, used as defaults.
 DEFAULT_RESOLUTION = (1920, 1080)
-DEFAULT_PIXEL_SIZE_UM = 35.0
-DEFAULT_LAYER_HEIGHT_UM = 50.0  # protocol offers 20 / 50 / 100
-SUPPORTED_LAYER_HEIGHTS_UM = (20.0, 50.0, 100.0)
+DEFAULT_VOXEL_WIDTH_UM = 35.0   # X (column) voxel pitch
+DEFAULT_VOXEL_LENGTH_UM = 35.0  # Y (row) voxel pitch
+DEFAULT_VOXEL_HEIGHT_UM = 50.0  # Z (layer) voxel pitch; protocol offers 20 / 50 / 100
+SUPPORTED_VOXEL_HEIGHTS_UM = (20.0, 50.0, 100.0)
 SHAPE_TYPES = ("rect", "circle", "polygon")
 UNIT_TYPES = ("px", "mm")
 GRADIENT_TYPES = ("edge_feather",)
@@ -81,8 +82,9 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class Printer:
     resolution: tuple  # (width_px, height_px)
-    pixel_size_um: float
-    layer_height_um: float
+    voxel_width_um: float   # X (column) voxel pitch, microns
+    voxel_length_um: float  # Y (row) voxel pitch, microns
+    voxel_height_um: float  # Z (layer) voxel pitch, microns
 
 
 @dataclass(frozen=True)
@@ -200,7 +202,7 @@ class Config:
 def default_config() -> Config:
     """Config with Lumen X3 defaults and no grayscale regions (uniform masks)."""
     return Config(
-        printer=Printer(DEFAULT_RESOLUTION, DEFAULT_PIXEL_SIZE_UM, DEFAULT_LAYER_HEIGHT_UM),
+        printer=Printer(DEFAULT_RESOLUTION, DEFAULT_VOXEL_WIDTH_UM, DEFAULT_VOXEL_LENGTH_UM, DEFAULT_VOXEL_HEIGHT_UM),
         default_solid_value=255,
         gradient=None,
         center_xy=True,
@@ -283,8 +285,9 @@ def config_to_dict(config: Config) -> dict:
     return {
         "printer": {
             "resolution": list(config.printer.resolution),
-            "pixel_size_um": config.printer.pixel_size_um,
-            "layer_height_um": config.printer.layer_height_um,
+            "voxel_width_um": config.printer.voxel_width_um,
+            "voxel_length_um": config.printer.voxel_length_um,
+            "voxel_height_um": config.printer.voxel_height_um,
         },
         "model": {"center_xy": config.center_xy, "rotation_deg": list(config.rotation_deg)},
         "grayscale": grayscale,
@@ -526,12 +529,19 @@ def _build_printer(raw: dict, base: Printer) -> Printer:
         or not all(isinstance(value, int) and value > 0 for value in resolution)
     ):
         raise ConfigError("printer.resolution must be [width, height] positive integers")
-    pixel = _positive_number(raw.get("pixel_size_um", base.pixel_size_um), "printer.pixel_size_um")
-    layer = _positive_number(raw.get("layer_height_um", base.layer_height_um), "printer.layer_height_um")
-    if layer not in SUPPORTED_LAYER_HEIGHTS_UM:
+    renamed = {"pixel_size_um", "layer_height_um"} & set(raw)
+    if renamed:
+        raise ConfigError(
+            f"printer key(s) {sorted(renamed)} were renamed — use "
+            "voxel_width_um / voxel_length_um (XY, µm) and voxel_height_um (Z, µm)"
+        )
+    width = _positive_number(raw.get("voxel_width_um", base.voxel_width_um), "printer.voxel_width_um")
+    length = _positive_number(raw.get("voxel_length_um", base.voxel_length_um), "printer.voxel_length_um")
+    height = _positive_number(raw.get("voxel_height_um", base.voxel_height_um), "printer.voxel_height_um")
+    if height not in SUPPORTED_VOXEL_HEIGHTS_UM:
         # Allowed, but the protocol only documents 20/50/100 µm.
-        print(f"[config] warning: layer_height_um={layer} is outside protocol values {SUPPORTED_LAYER_HEIGHTS_UM}")
-    return Printer((int(resolution[0]), int(resolution[1])), float(pixel), float(layer))
+        print(f"[config] warning: voxel_height_um={height} is outside protocol values {SUPPORTED_VOXEL_HEIGHTS_UM}")
+    return Printer((int(resolution[0]), int(resolution[1])), float(width), float(length), float(height))
 
 
 def _build_region(raw: dict, index: int) -> Region:

@@ -41,8 +41,8 @@ def slice_mesh(mesh: trimesh.Trimesh, printer: Printer, center_xy: bool) -> list
     True = solid (cured) pixel. Empty layers yield an all-False mask so the
     stack ordering stays contiguous.
     """
-    pixel_mm = printer.pixel_size_um / 1000.0
-    layer_mm = printer.layer_height_um / 1000.0
+    pixel_mm = printer.voxel_width_um / 1000.0  # square XY pitch (width == length)
+    layer_mm = printer.voxel_height_um / 1000.0
     width, height = printer.resolution
 
     z_min, z_max = float(mesh.bounds[0][2]), float(mesh.bounds[1][2])
@@ -59,7 +59,7 @@ def slice_mesh(mesh: trimesh.Trimesh, printer: Printer, center_xy: bool) -> list
 
 def layer_z_values(mesh: trimesh.Trimesh, printer: Printer) -> list[float]:
     """World-space Z (mm) of every slice plane, bottom first - the stack's layer count."""
-    layer_mm = printer.layer_height_um / 1000.0
+    layer_mm = printer.voxel_height_um / 1000.0
     z_min, z_max = float(mesh.bounds[0][2]), float(mesh.bounds[1][2])
     values: list[float] = []
     z = z_min + layer_mm / 2.0
@@ -78,7 +78,7 @@ def slice_index(mesh: trimesh.Trimesh, printer: Printer, center_xy: bool, index:
     zs = layer_z_values(mesh, printer)
     if not 1 <= index <= len(zs):
         raise ValueError(f"layer index {index} out of range 1..{len(zs)}")
-    pixel_mm = printer.pixel_size_um / 1000.0
+    pixel_mm = printer.voxel_width_um / 1000.0  # square XY pitch (width == length)
     width, height = printer.resolution
     origin_xy = canvas_origin(mesh, printer, center_xy)
     return _rasterize_layer(mesh, zs[index - 1], origin_xy, pixel_mm, (width, height))
@@ -105,7 +105,7 @@ def _rasterize_layer(mesh, z, origin_xy, pixel_mm, resolution) -> np.ndarray:
 
 def canvas_origin(mesh, printer: Printer, center_xy: bool) -> np.ndarray:
     """World-space (mm) lower-left corner of the raster canvas, shared by all layers."""
-    pixel_mm = printer.pixel_size_um / 1000.0
+    pixel_mm = printer.voxel_width_um / 1000.0  # square XY pitch (width == length)
     width, height = printer.resolution
     canvas_mm = np.array([width * pixel_mm, height * pixel_mm])
     if center_xy:
@@ -115,7 +115,7 @@ def canvas_origin(mesh, printer: Printer, center_xy: bool) -> np.ndarray:
 
 
 def _warn_if_oversized(mesh, printer: Printer) -> None:
-    pixel_mm = printer.pixel_size_um / 1000.0
+    pixel_mm = printer.voxel_width_um / 1000.0  # square XY pitch (width == length)
     width, height = printer.resolution
     canvas_mm = np.array([width * pixel_mm, height * pixel_mm])
     model_mm = mesh.bounds[1][:2] - mesh.bounds[0][:2]

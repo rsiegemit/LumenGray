@@ -26,9 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--out", default="./photomasks", help="output folder for PNG masks")
     parser.add_argument("--prefix", default="", help="filename prefix for output PNGs")
     parser.add_argument(
-        "--layer-height-um",
+        "--voxel-height-um",
         type=float,
-        help="override layer height in microns (20 / 50 / 100)",
+        help="override voxel height (Z) in microns (20 / 50 / 100)",
     )
     parser.add_argument(
         "--falloff-mm",
@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config) if args.config else default_config()
-        if args.layer_height_um is not None:
-            config = _override_layer_height(config, args.layer_height_um)
+        if args.voxel_height_um is not None:
+            config = _override_voxel_height(config, args.voxel_height_um)
         if args.falloff_mm is not None:
             config = _override_falloff(config, args.falloff_mm)
         config = _override_tessellation(config, args.cubic_tessellation, args.grey_value)
@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Wrote {summary['layers']} masks to {summary['out_dir']} "
         f"({summary['resolution'][0]}x{summary['resolution'][1]} @ "
-        f"{summary['pixel_size_um']}um XY, {summary['layer_height_um']}um Z, "
+        f"{summary['voxel_width_um']}um XY, {summary['voxel_height_um']}um Z, "
         f"{summary['regions']} grayscale region(s))"
     )
     if summary["mode"] == "cubic_tessellation":
@@ -101,10 +101,10 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _override_layer_height(config, layer_height_um):
+def _override_voxel_height(config, voxel_height_um):
     from dataclasses import replace
 
-    printer = replace(config.printer, layer_height_um=float(layer_height_um))
+    printer = replace(config.printer, voxel_height_um=float(voxel_height_um))
     return replace(config, printer=printer)
 
 

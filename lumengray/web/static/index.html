@@ -64,8 +64,11 @@
         <div class="grid2">
           <label title="Build-area width in pixels (printer-native, e.g. 1920).">Width (px)<input type="number" id="res-w" value="1920" min="1" step="1" /></label>
           <label title="Build-area height in pixels (e.g. 1080).">Height (px)<input type="number" id="res-h" value="1080" min="1" step="1" /></label>
-          <label title="Physical size of one XY pixel, in microns (Lumen X3 ≈ 35).">Pixel size (µm)<input type="number" id="pixel-um" value="35" min="1" step="1" /></label>
-          <label title="Z thickness of each printed layer, in microns (20 / 50 / 100).">Layer height (µm)<input type="number" id="layer-um" value="50" min="1" step="1" /></label>
+          <label title="Z thickness of one voxel (the printed layer height), in microns. LumenX protocol: 20 / 50 / 100. XY voxel size is fixed at 35µm.">Voxel height (µm)<select id="voxel-height-um">
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select></label>
         </div>
       </section>
 
@@ -239,30 +242,31 @@
               <button data-tmode="element" title="A single tessellation unit cell — design the structure→core gradient on it.">Element</button>
             </div>
             <div class="wf-panel" id="wf3d-panel" hidden>
-              <div class="wf-bandwrap" id="wf3d-bandwrap" title="Which exposure bands to show: white=structure, gray=diffusion, black=lumen (void).">
-                <div class="wf-bands" id="wf3d-bands" title="white = structure · gray = diffusion/adhesion · black = lumen (empty). Combine any.">
-                  <label class="on"><input type="checkbox" value="white" checked />White</label>
-                  <label class="on"><input type="checkbox" value="gray" checked />Gray</label>
-                  <label><input type="checkbox" value="black" />Black</label>
+              <div class="wf-bandwrap" id="wf3d-bandwrap" title="Filter which voxels are shown by exposure: Structure (white/cured), Diffusion (gray), Void (black/lumen). In 1:1 Voxels each voxel keeps its true 0–255 value; these only toggle visibility.">
+                <span class="wf-lead">Show</span>
+                <div class="wf-bands" id="wf3d-bands" title="Structure = white/cured · Diffusion = gray/adhesion · Void = lumen (empty). Combine any.">
+                  <label class="on"><input type="checkbox" value="white" checked />Structure</label>
+                  <label class="on"><input type="checkbox" value="gray" checked />Diffusion</label>
+                  <label><input type="checkbox" value="black" />Void</label>
                 </div>
-                <label class="wf-thresh" title="Values below this are the black (lumen/void) band.">
-                  Gray&nbsp;≥<input type="number" id="wf3d-tlow" min="1" max="254" value="64" />
+                <label class="wf-thresh" title="Voxels below this exposure count as Void (lumen).">
+                  Void&nbsp;&lt;<input type="number" id="wf3d-tlow" min="1" max="254" value="64" />
                 </label>
-                <label class="wf-thresh" title="Values at or above this are the white (structure) band.">
-                  White&nbsp;≥<input type="number" id="wf3d-thigh" min="2" max="255" value="192" />
+                <label class="wf-thresh" title="Voxels at or above this exposure count as Structure.">
+                  Struct&nbsp;≥<input type="number" id="wf3d-thigh" min="2" max="255" value="192" />
                 </label>
               </div>
               <label class="wf-slab" id="wf3d-slab" hidden title="Which layer range to render at 1:1 — a bounded slab keeps millions of voxels interactive.">
                 Layers&nbsp;<input type="number" id="wf3d-lfrom" min="1" value="1" />–<input type="number" id="wf3d-lto" min="1" value="60" />
               </label>
             </div>
-            <label class="cutaway" title="Vertical cutaway — slice along X (a vertical plane).">
+            <label class="cutaway" title="Vertical cutaway — the cut travels up/down (slices bottom→top along Z).">
               Vertical
-              <input type="range" id="clip-slider" min="0" max="100" value="100" />
-            </label>
-            <label class="cutaway" title="Horizontal cutaway — slice bottom→top along Z (a horizontal plane).">
-              Horizontal
               <input type="range" id="clip-slider-z" min="0" max="100" value="100" />
+            </label>
+            <label class="cutaway" title="Horizontal cutaway — the cut travels side to side (slices along X).">
+              Horizontal
+              <input type="range" id="clip-slider" min="0" max="100" value="100" />
             </label>
             <span class="hint" id="three-hint">Drag to orbit · scroll to zoom · right-drag to pan</span>
           </div>

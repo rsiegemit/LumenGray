@@ -290,7 +290,7 @@ def create_app() -> FastAPI:
             raise HTTPException(400, str(error)) from error
         origin = canvas_origin(mesh, config.printer, config.center_xy)
         regions = resolve_regions(config, origin)
-        pixel_mm = config.printer.pixel_size_um / 1000.0
+        pixel_mm = config.printer.voxel_width_um / 1000.0
         layer = render_layer(solid, index, total, config, regions, pixel_mm)
         buffer = io.BytesIO()
         Image.fromarray(layer, mode="L").save(buffer, format="PNG")
@@ -343,8 +343,8 @@ def create_app() -> FastAPI:
             raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
         origin = canvas_origin(mesh, config.printer, config.center_xy)
         regions = resolve_regions(config, origin)
-        pixel_mm = config.printer.pixel_size_um / 1000.0
-        layer_mm = config.printer.layer_height_um / 1000.0
+        pixel_mm = config.printer.voxel_width_um / 1000.0
+        layer_mm = config.printer.voxel_height_um / 1000.0
 
         x0, y0, x1, y1 = _footprint_box(mesh, config)
         if x1 <= x0 or y1 <= y0:
@@ -394,8 +394,9 @@ def create_app() -> FastAPI:
         if total == 0:
             raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
 
-        pixel_mm = config.printer.pixel_size_um / 1000.0
-        layer_mm = config.printer.layer_height_um / 1000.0
+        pixel_mm = config.printer.voxel_width_um / 1000.0
+        length_mm = config.printer.voxel_length_um / 1000.0
+        layer_mm = config.printer.voxel_height_um / 1000.0
         height = config.printer.resolution[1]  # for the row→world-Y flip below
         origin = canvas_origin(mesh, config.printer, config.center_xy)
         regions = resolve_regions(config, origin)
@@ -483,7 +484,7 @@ def create_app() -> FastAPI:
         truncated = sampler.total > req.max_voxels
         out = sampler.result()
         return {
-            "voxel_size_mm": [round(fxy * pixel_mm, 4), round(fxy * pixel_mm, 4), round(fz * layer_mm, 4)],
+            "voxel_size_mm": [round(fxy * pixel_mm, 4), round(fxy * length_mm, 4), round(fz * layer_mm, 4)],
             "voxels": out,
             "count": len(out),
             "truncated": truncated,
@@ -508,8 +509,9 @@ def create_app() -> FastAPI:
         total = count_layers(mesh, config.printer)
         if total == 0:
             raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
-        pixel_mm = config.printer.pixel_size_um / 1000.0
-        layer_mm = config.printer.layer_height_um / 1000.0
+        pixel_mm = config.printer.voxel_width_um / 1000.0
+        length_mm = config.printer.voxel_length_um / 1000.0
+        layer_mm = config.printer.voxel_height_um / 1000.0
         width, height = config.printer.resolution
         height_mm = total * layer_mm
 
@@ -518,7 +520,7 @@ def create_app() -> FastAPI:
         c0, r0, c1, r1 = _footprint_box(mesh, config)
 
         def to_mm(col, row, z):
-            return [round(col * pixel_mm, 3), round((height - 1 - row) * pixel_mm, 3), round(z, 3)]
+            return [round(col * pixel_mm, 3), round((height - 1 - row) * length_mm, 3), round(z, 3)]
 
         def solid_at(mask, col, row):
             r, c = int(round(row)), int(round(col))
@@ -643,22 +645,24 @@ def create_app() -> FastAPI:
         """1:1 machine-resolution voxels: every voxel is exactly one print pixel
         (35µm XY) × one layer (50µm Z), coloured by its real exposure and filtered
         to the requested bands (white=structure, gray=diffusion, black=lumen/void).
-        Streams a compact binary blob (int16 x,y,layer + uint8 band); metadata in
-        the X-Meta header. Capped at max_voxels with a truncated flag."""
+        Streams a compact binary blob (int16 x,y,layer + uint8 exposure value 0-255);
+        metadata in the X-Meta header. Capped at max_voxels with a truncated flag.
+        The band checkboxes are filters (which voxels to include); each voxel carries
+        its true grayscale value so the view shows the full gradient, not 3 buckets."""
         item = _get(req.id)
         config = _config(req.config)
         mesh = _oriented(item, config)
         total = count_layers(mesh, config.printer)
         if total == 0:
             raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
-        pixel_mm = config.printer.pixel_size_um / 1000.0
-        layer_mm = config.printer.layer_height_um / 1000.0
+        pixel_mm = config.printer.voxel_width_um / 1000.0
+        layer_mm = config.printer.voxel_height_um / 1000.0
         width, height = config.printer.resolution
         regions = resolve_regions(config, canvas_origin(mesh, config.printer, config.center_xy))
         c0, r0, c1, r1 = _footprint_box(mesh, config)
         tl, th = req.t_low, req.t_high
         want = set(req.bands)
-        cols, rows, lays, bnds = [], [], [], []
+        cols, rows, lays, vals = [], [], [], []
         counts = {"white": 0, "gray": 0, "black": 0}
         nvox, truncated = 0, False
         lo = max(1, req.layer_from)
@@ -670,19 +674,19 @@ def create_app() -> FastAPI:
             crop = lay[r0:r1, c0:c1]
             picks = []
             if "white" in want:
-                m = crop >= th; counts["white"] += int(m.sum()); picks.append((m, 0))
+                m = crop >= th; counts["white"] += int(m.sum()); picks.append(m)
             if "gray" in want:
-                m = (crop >= tl) & (crop < th); counts["gray"] += int(m.sum()); picks.append((m, 1))
+                m = (crop >= tl) & (crop < th); counts["gray"] += int(m.sum()); picks.append(m)
             if "black" in want:  # lumen: void pixels inside the part silhouette (incl. open/drained channels)
                 foot = ndimage.binary_fill_holes(sld[r0:r1, c0:c1])
-                m = foot & (crop < tl); counts["black"] += int(m.sum()); picks.append((m, 2))
-            for m, bi in picks:
+                m = foot & (crop < tl); counts["black"] += int(m.sum()); picks.append(m)
+            for m in picks:
                 yy, xx = np.where(m)
                 if yy.size:
                     cols.append((xx + c0).astype(np.int16))
                     rows.append((yy + r0).astype(np.int16))
                     lays.append(np.full(yy.size, L, np.int16))
-                    bnds.append(np.full(yy.size, bi, np.uint8))
+                    vals.append(crop[yy, xx].astype(np.uint8))  # true 0-255 exposure per voxel
                     nvox += yy.size
             del lay, crop
             if nvox > req.max_voxels:
@@ -693,11 +697,11 @@ def create_app() -> FastAPI:
             cx = np.concatenate(cols)[: req.max_voxels]
             cy = np.concatenate(rows)[: req.max_voxels]
             cz = np.concatenate(lays)[: req.max_voxels]
-            cb = np.concatenate(bnds)[: req.max_voxels]
+            cv = np.concatenate(vals)[: req.max_voxels]
         else:
-            cx = cy = cz = np.empty(0, np.int16); cb = np.empty(0, np.uint8)
+            cx = cy = cz = np.empty(0, np.int16); cv = np.empty(0, np.uint8)
         n = int(cx.size)
-        buf = cx.tobytes() + cy.tobytes() + cz.tobytes() + cb.tobytes()
+        buf = cx.tobytes() + cy.tobytes() + cz.tobytes() + cv.tobytes()
         meta = {
             "n": n, "pixel_mm": round(pixel_mm, 5), "layer_mm": round(layer_mm, 5),
             "height": height, "height_mm": round(total * layer_mm, 4), "total_layers": total,
@@ -728,10 +732,11 @@ def create_app() -> FastAPI:
             grey = config.triangulation.grey_value
             config = replace(config, triangulation=replace(config.triangulation, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0))
 
-        pixel_mm = config.printer.pixel_size_um / 1000.0
-        layer_mm = config.printer.layer_height_um / 1000.0
-        struts = [[round(v, 4) for v in (s[0] * pixel_mm, s[1] * pixel_mm, s[2] * layer_mm,
-                                         s[3] * pixel_mm, s[4] * pixel_mm, s[5] * layer_mm)] for s in segs_vox]
+        pixel_mm = config.printer.voxel_width_um / 1000.0
+        length_mm = config.printer.voxel_length_um / 1000.0
+        layer_mm = config.printer.voxel_height_um / 1000.0
+        struts = [[round(v, 4) for v in (s[0] * pixel_mm, s[1] * length_mm, s[2] * layer_mm,
+                                         s[3] * pixel_mm, s[4] * length_mm, s[5] * layer_mm)] for s in segs_vox]
 
         # Graded infill: one cell's interior, keeping only the graded grey->black
         # fill (< white) — the white struts are drawn as the clean cage above.
@@ -751,17 +756,22 @@ def create_app() -> FastAPI:
                 gy, gx = np.mgrid[0:cx, 0:cx]
                 grid_xy = np.column_stack([gx.ravel().astype(np.float64), gy.ravel().astype(np.float64)])
         # Show the grey fill and everything darker (the gradient's darkening toward
-        # the core, or an explicit black core) — but NOT the near-strut bright
-        # voxels, which just duplicate the cage. Including plain grey means the cell
-        # is never empty even without a gradient.
+        # the core, or an explicit black core). For cubic/triangular that excludes
+        # the near-strut white voxels — they just duplicate the cage and plain grey
+        # already fills those cells. The octet primitive is different: its two
+        # tetrahedral caps (the poles at the (0,0,0)/(2,2,2) apex nodes) are made
+        # *entirely* of struts, so dropping white would leave the poles empty. There
+        # we keep every interior voxel — struts included — so the cell renders as the
+        # solid repeating unit and reads as one recognizable cell.
         keep_below = grey
+        keep_all = hull is not None  # octet primitive: include struts to fill the tet caps
         fill = []
         # Render z = 0..cz (node plane to node plane) so the fill spans exactly the
         # same range as the strut cage; store z in the SAME units as the struts
         # (octet layers, 0-based) so cage and fill line up voxel-for-voxel.
         for L in range(1, cz + 2):  # caps zeroed → every layer interior; z = L-1
             lay = render_layer(solid, L, cz + 1, config, (), pixel_mm)
-            keep = solid & (lay <= keep_below)  # inside the cell, grey or darker (incl. black core)
+            keep = solid.copy() if keep_all else (solid & (lay <= keep_below))  # octet: all interior; else grey-or-darker
             if hull is not None:  # keep only voxels inside the octet primitive at this z
                 pts = np.column_stack([grid_xy, np.full(len(grid_xy), float(L - 1))])
                 keep &= (hull.find_simplex(pts) >= 0).reshape(cx, cx)
@@ -771,8 +781,8 @@ def create_app() -> FastAPI:
         return {
             "struts": struts,
             "voxels": fill,
-            "cell_mm": [round(cx * pixel_mm, 4), round(cx * pixel_mm, 4), round(cz * layer_mm, 4)],
-            "voxel_size_mm": [round(pixel_mm, 4), round(pixel_mm, 4), round(layer_mm, 4)],
+            "cell_mm": [round(cx * pixel_mm, 4), round(cx * length_mm, 4), round(cz * layer_mm, 4)],
+            "voxel_size_mm": [round(pixel_mm, 4), round(length_mm, 4), round(layer_mm, 4)],
             "count": len(fill),
         }
 
@@ -812,7 +822,7 @@ class _BoundedSampler:
 def _footprint_box(mesh, config) -> tuple[int, int, int, int]:
     """Model XY footprint in output pixels (from mesh bounds) — used to crop the
     canvas so we never allocate/scan the full empty build area."""
-    pixel_mm = config.printer.pixel_size_um / 1000.0
+    pixel_mm = config.printer.voxel_width_um / 1000.0
     width, height = config.printer.resolution
     origin = canvas_origin(mesh, config.printer, config.center_xy)
     (xmin, ymin) = mesh.bounds[0][:2]

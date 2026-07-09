@@ -68,8 +68,9 @@ export function buildConfig() {
   const config = {
     printer: {
       resolution: [int("res-w", 1920), int("res-h", 1080)],
-      pixel_size_um: num("pixel-um", 35),
-      layer_height_um: num("layer-um", 50),
+      voxel_width_um: 35,   // X — fixed for now (not user-editable)
+      voxel_length_um: 35,  // Y — fixed for now (not user-editable)
+      voxel_height_um: num("voxel-height-um", 50),
     },
     model: {
       center_xy: $("center-xy").checked,
@@ -146,8 +147,7 @@ export function selectMode(mode) {
 export function applyConfig(c) {
   const p = c.printer || {}, m = c.model || {}, g = c.grayscale || {};
   if (p.resolution) { setVal("res-w", p.resolution[0]); setVal("res-h", p.resolution[1]); }
-  setVal("pixel-um", p.pixel_size_um);
-  setVal("layer-um", p.layer_height_um);
+  if (p.voxel_height_um != null) setVal("voxel-height-um", p.voxel_height_um);
   if (typeof m.center_xy === "boolean") $("center-xy").checked = m.center_xy;
   if (m.rotation_deg) { setVal("rot-x", m.rotation_deg[0]); setVal("rot-y", m.rotation_deg[1]); setVal("rot-z", m.rotation_deg[2]); }
   if (g.cubic_tessellation) {

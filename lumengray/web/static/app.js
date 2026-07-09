@@ -284,7 +284,7 @@ function wire() {
 
   // every control → live config + 2D preview + (debounced) 3D rebuild. The 3D
   // toolbar controls (bands, cutaway, slab) handle themselves and aren't config.
-  document.querySelectorAll("input, #mode-seg button").forEach((el) => {
+  document.querySelectorAll("input, select, #mode-seg button").forEach((el) => {
     if (el.closest(".three-toolbar")) return;
     const evt = el.type === "range" || el.type === "number" || el.type === "text" ? "input" : "change";
     el.addEventListener(evt, () => { updateOutputs(); updateGyroidAvail(); schedulePreview(); scheduleView3D(); });

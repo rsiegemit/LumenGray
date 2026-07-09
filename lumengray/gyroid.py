@@ -23,14 +23,15 @@ from .config import GyroidChannel, Printer
 
 def gyroid_carve(layer: np.ndarray, solid: np.ndarray, layer_index: int, printer: Printer, g: GyroidChannel) -> np.ndarray:
     """Return ``layer`` with a gyroid-surface void carved through the solid."""
-    pixel_mm = printer.pixel_size_um / 1000.0
-    layer_mm = printer.layer_height_um / 1000.0
+    width_mm = printer.voxel_width_um / 1000.0
+    length_mm = printer.voxel_length_um / 1000.0
+    layer_mm = printer.voxel_height_um / 1000.0
     height, width = layer.shape
     a = 2.0 * np.pi / g.cell_mm
     z = (layer_index - 0.5) * layer_mm  # this layer's height in mm
 
-    x = (np.arange(width, dtype=np.float32) * pixel_mm)[None, :]
-    y = (np.arange(height, dtype=np.float32) * pixel_mm)[:, None]
+    x = (np.arange(width, dtype=np.float32) * width_mm)[None, :]
+    y = (np.arange(height, dtype=np.float32) * length_mm)[:, None]
     sax, cax = np.sin(a * x), np.cos(a * x)
     say, cay = np.sin(a * y), np.cos(a * y)
     sz, cz = np.sin(a * z), np.cos(a * z)
@@ -43,7 +44,7 @@ def gyroid_carve(layer: np.ndarray, solid: np.ndarray, layer_index: int, printer
     gy = -sax * say + cay * cz
     gz = -say * sz + cz * cax
     grad = np.sqrt(gx * gx + gy * gy + gz * gz) + 1e-6  # = |grad G| / a
-    channel = np.abs(field) < a * (g.channel_px * pixel_mm / 2.0) * grad
+    channel = np.abs(field) < a * (g.channel_px * width_mm / 2.0) * grad
 
     # Keep a solid skin: only carve where the pixel is >= skin_px inside the part
     # surface, so the void never breaches the boundary (or any internal hole edge).

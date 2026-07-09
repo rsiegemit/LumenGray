@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
-_PRINTER = {"resolution": [1920, 1080], "pixel_size_um": 35, "layer_height_um": 50}
+_PRINTER = {"resolution": [1920, 1080], "voxel_width_um": 35, "voxel_length_um": 35, "voxel_height_um": 50}
 _MODEL = {"center_xy": True, "rotation_deg": [0, 0, 0]}
 
 

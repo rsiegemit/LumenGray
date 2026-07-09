@@ -46,7 +46,7 @@ def run(
 
     origin = canvas_origin(mesh, config.printer, config.center_xy)
     regions = _resolve_regions(config, origin)
-    pixel_mm = config.printer.pixel_size_um / 1000.0
+    pixel_mm = config.printer.voxel_width_um / 1000.0  # square XY pitch (width == length)
 
     os.makedirs(out_dir, exist_ok=True)
     pad = max(4, len(str(total)))
@@ -67,8 +67,9 @@ def run(
     summary = {
         "layers": total,
         "resolution": config.printer.resolution,
-        "layer_height_um": config.printer.layer_height_um,
-        "pixel_size_um": config.printer.pixel_size_um,
+        "voxel_height_um": config.printer.voxel_height_um,
+        "voxel_width_um": config.printer.voxel_width_um,
+        "voxel_length_um": config.printer.voxel_length_um,
         "regions": len(regions),
         "rotation_deg": config.rotation_deg,
         "out_dir": out_dir,
@@ -102,7 +103,7 @@ def _source_stem(source: dict | None, stl_path: str) -> str:
 
 def stack_basename(config: Config, stem: str) -> str:
     """A descriptive, filesystem-safe name encoding the source + grayscale parameters."""
-    parts = [_slug(stem) or "photostack", f"{config.printer.layer_height_um:g}um"]
+    parts = [_slug(stem) or "photostack", f"{config.printer.voxel_height_um:g}um"]
     if config.octet is not None:
         o = config.octet
         parts.append(f"octet-xy{o.cell_xy_px}-z{o.cell_z_layers}-s{o.strut_px}-b{o.boundary_px}")
@@ -189,7 +190,7 @@ def _resolve_regions(config: Config, origin) -> tuple:
     for region in config.regions:
         if region.units == "mm":
             shape = shape_to_pixels(
-                region.shape, origin, config.printer.pixel_size_um / 1000.0, config.printer.resolution
+                region.shape, origin, config.printer.voxel_width_um / 1000.0, config.printer.resolution
             )
             region = dataclasses.replace(region, shape=shape, units="px")
         resolved.append(region)

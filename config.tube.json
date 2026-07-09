@@ -1,8 +1,9 @@
 {
   "printer": {
     "resolution": [1920, 1080],
-    "pixel_size_um": 35,
-    "layer_height_um": 50
+    "voxel_width_um": 35,
+    "voxel_length_um": 35,
+    "voxel_height_um": 50
   },
   "model": {
     "center_xy": true

@@ -93,19 +93,21 @@ The **3D model** tab has five orbitable views:
   cage** (columns + square/triangular frame edges, or the octet's sloped tetrahedra
   struts) computed from the parameters and clipped per layer so it follows curved
   shapes; for other modes it's an exposure-**band** cage.
-- **1:1 Voxels** — *true machine voxels*, one solid box per print pixel (35×35×50 µm) at
-  its real exposure — a literal preview of what the printer lays down. Toggle the
-  **white** (structure) / **gray** (diffusion) / **black** (lumen) bands with editable
-  thresholds, and bound a **layer-range slab** to keep the millions of voxels interactive
-  (inspect just the structure, or just the lumen network, before printing).
+- **1:1 Voxels** — *true machine voxels*, one solid box per print pixel at its **exact
+  0–255 exposure** (the full grayscale gradient, not quantized to bands) — a literal
+  preview of what the printer lays down. The **Structure / Diffusion / Void** toggles
+  *filter* which voxels are shown (with editable exposure thresholds), and a
+  **layer-range slab** keeps the millions of voxels interactive (inspect just the
+  structure, or just the lumen network, before printing).
 - **Element** — exactly **one** tessellation unit cell as a crisp white **strut cage**
   with the graded grey→black infill shown as translucent voxels inside it — the live
   design surface for the structure→core gradient. The cage is the element's true
   geometry: a cube for cubic, a prism for triangular, and for octet the faithful
-  **primitive** (1 octahedron + 2 tetrahedra), with the fill isolated to its own voids.
+  **primitive** (1 octahedron + 2 tetrahedra), filled to every corner (struts included)
+  so it reads as one solid repeating cell.
 
-Two **Cutaway** sliders — **Vertical** (slice along X) and **Horizontal** (bottom→top
-along Z) — clip any view to see inside.
+Two **Cutaway** sliders — **Vertical** (the cut travels up/down along Z) and
+**Horizontal** (the cut travels side to side along X) — clip any view to see inside.
 
 ![Built-in examples](docs/screenshot-presets.png)
 ![3D wireframe view](docs/screenshot-wireframe.png)
@@ -113,7 +115,7 @@ along Z) — clip any view to see inside.
 ## The CLI
 
 ```bash
-# Uniform white masks (defaults: 1920×1080 @ 35µm XY, 50µm Z)
+# Uniform white masks (defaults: 1920×1080, 35µm XY voxels, 50µm voxel height)
 lumengray model.stl -o ./out --preview
 
 # Hollow-cube infill (drag-and-drop on any STL)
@@ -123,7 +125,7 @@ lumengray model.stl --cubic-tessellation -o ./out --grey-value 128
 lumengray model.stl -c config.tessellation.json -o ./out
 ```
 
-Useful flags: `--layer-height-um`, `--falloff-mm`, `--rotate-x/y/z`, `--prefix`,
+Useful flags: `--voxel-height-um`, `--falloff-mm`, `--rotate-x/y/z`, `--prefix`,
 `--preview` (writes a contact-sheet thumbnail grid).
 
 ## As a library
@@ -140,7 +142,8 @@ print(summary["layers"], "masks written")
 
 ```jsonc
 {
-  "printer": { "resolution": [1920, 1080], "pixel_size_um": 35, "layer_height_um": 50 },
+  // voxel_width_um/voxel_length_um = XY pixel pitch (µm); voxel_height_um = Z layer (20/50/100)
+  "printer": { "resolution": [1920, 1080], "voxel_width_um": 35, "voxel_length_um": 35, "voxel_height_um": 50 },
   "model":   { "center_xy": true, "rotation_deg": [0, 0, 0] },
   "grayscale": {
     "default_solid_value": 255,                 // uniform fill for cured pixels

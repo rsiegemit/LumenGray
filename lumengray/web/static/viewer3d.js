@@ -48,8 +48,8 @@ function initThree() {
   grid.rotation.x = Math.PI / 2; // lay the grid in the XY (build-plate) plane
   scene.add(grid);
   three = { renderer, scene, camera, controls, grid, mesh: null, stack: null, stackKey: null, mode: "mesh", meshRadius: 10, meshBottom: 0, meshHalfH: 10, clipR: 10, clipRz: 10 };
-  three.clipX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e6); // vertical cutaway (slices along X)
-  three.clipZ = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e6); // horizontal cutaway (slices along Z, bottom→top)
+  three.clipX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e6); // "Horizontal" slider (cut travels side to side along X)
+  three.clipZ = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e6); // "Vertical" slider (cut travels up/down along Z, bottom→top)
   renderer.clippingPlanes = [three.clipX, three.clipZ];
 
   function resize() {
@@ -78,8 +78,9 @@ function frame(radius) {
   three.controls.update();
 }
 
-// Cutaways: Vertical slides a plane along X; Horizontal slides one along Z
-// (bottom→top). 100 = whole model; lower = cut more away.
+// Cutaways: "Horizontal" (clip-slider) slides a plane along X (side to side);
+// "Vertical" (clip-slider-z) slides one along Z (up/down, bottom→top).
+// 100 = whole model; lower = cut more away.
 export function applyClip() {
   if (!three) return;
   const fx = parseInt($("clip-slider").value, 10) / 100;
@@ -309,11 +310,11 @@ async function makeCage() {
   return { obj: group, h, radius, hint: `${data.kind} strut cage · ${data.count.toLocaleString()} edges${data.truncated ? " (capped)" : ""}` };
 }
 
-// 1:1 machine voxels: every voxel is one print pixel (35×35×50µm), coloured by
-// its real exposure band, rendered as solid boxes at exact voxel size so they
-// tile seamlessly (no gaps). Bounded to a layer slab + a cap to stay in memory.
-// black kept just above the 0x11141a background so the lumen reads as near-black.
-const BAND_RGB = { white: [1, 1, 1], gray: [0.54, 0.54, 0.54], black: [0.15, 0.16, 0.19] };
+// 1:1 machine voxels: every voxel is one print pixel, coloured by its TRUE 0-255
+// exposure value (the full gradient, not 3 buckets), rendered as solid boxes at
+// exact voxel size so they tile seamlessly (no gaps). The White/Gray/Black boxes
+// are filters (which voxels to include). Bounded to a layer slab + a cap for
+// memory. A small brightness floor keeps near-black lumen visible on the dark bg.
 async function makeNative() {
   const { bands, tLow, tHigh } = bandControls();
   if (!bands.length) return { obj: new THREE.Group(), h: 2, radius: three.meshRadius || 10, hint: "Pick a band — White / Gray / Black" };
@@ -327,8 +328,7 @@ async function makeNative() {
   const meta = JSON.parse(res.headers.get("X-Meta"));
   const buf = await res.arrayBuffer();
   const n = meta.n, pm = meta.pixel_mm, lm = meta.layer_mm, H = meta.height, h = meta.height_mm;
-  const cx = new Int16Array(buf, 0, n), cy = new Int16Array(buf, 2 * n, n), cz = new Int16Array(buf, 4 * n, n), cb = new Uint8Array(buf, 6 * n, n);
-  const BSHADE = ["white", "gray", "black"];
+  const cx = new Int16Array(buf, 0, n), cy = new Int16Array(buf, 2 * n, n), cz = new Int16Array(buf, 4 * n, n), val = new Uint8Array(buf, 6 * n, n);
   let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
   for (let i = 0; i < n; i++) { const x = cx[i] * pm, y = (H - 1 - cy[i]) * pm; if (x < xmin) xmin = x; if (x > xmax) xmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
   const mx = (xmin + xmax) / 2, my = (ymin + ymax) / 2;
@@ -340,8 +340,8 @@ async function makeNative() {
   for (let i = 0; i < n; i++) {
     m4.makeTranslation(cx[i] * pm - mx, (H - 1 - cy[i]) * pm - my, (cz[i] - 0.5) * lm - h / 2);
     inst.setMatrixAt(i, m4);
-    const rgb = BAND_RGB[BSHADE[cb[i]]] || BAND_RGB.gray;
-    inst.setColorAt(i, c.setRGB(rgb[0], rgb[1], rgb[2]));
+    const g = Math.max(0.08, val[i] / 255);  // true exposure; small floor keeps near-black lumen visible
+    inst.setColorAt(i, c.setRGB(g, g, g));
   }
   inst.instanceMatrix.needsUpdate = true;
   if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
@@ -406,7 +406,7 @@ async function makeElement() {
     group.add(inst);
   }
   const radius = Math.max(xmax - xmin, ymax - ymin, czmm) * 0.95 || 10;
-  return { obj: group, h: czmm, radius, hint: `Element · one cell · ${data.count.toLocaleString()} graded voxels` };
+  return { obj: group, h: czmm, radius, hint: `Element · one cell · ${data.count.toLocaleString()} voxels` };
 }
 
 // Force a rebuild of the current built view (e.g. a band control changed, which
