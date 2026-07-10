@@ -63,9 +63,11 @@ DEFAULT_OCTET = {
 
 # Gyroid void-connector overlay defaults (composes on top of any grayscale mode).
 DEFAULT_GYROID = {
-    "cell_mm": 0.8,  # gyroid unit-cell period (mm) — perfusion channel spacing
-    "channel_px": 4,  # carved void channel width (voxels) along the gyroid surface
+    "cell_mm": 0.8,  # tpms route: gyroid unit-cell period (mm) — perfusion channel spacing
+    "channel_px": 1,  # carved void channel width (voxels)
     "skin_px": 3,  # solid wall kept around the part boundary (void never breaches it)
+    "route": "geodesic",  # "geodesic" (void-matching channels) | "tpms" (gyroid surface)
+    "drain": False,  # geodesic route: breach the skin so the network drains to the surface
 }
 
 # Structure->core exposure gradient defaults (grades tessellation cells by distance).
@@ -164,13 +166,16 @@ class OctetTessellation:
 
 @dataclass(frozen=True)
 class GyroidChannel:
-    """Gyroid void-connector overlay — carves a continuous minimal-surface void
-    through whatever the base grayscale mode produced, threading isolated black
-    (lumen) regions into one interconnected, drainable perfusion network."""
+    """Void-connector overlay — links the isolated black (lumen) regions into one
+    interconnected, drainable perfusion network. ``route`` = "geodesic" builds
+    straight channels through the actual per-cell voids (matches the real voids,
+    tessellation modes); "tpms" carves the legacy gyroid minimal surface."""
 
-    cell_mm: float  # gyroid unit-cell period in mm (isotropic in printed space)
+    cell_mm: float  # tpms route: gyroid unit-cell period in mm (isotropic in printed space)
     channel_px: int  # carved void channel width, in voxels
     skin_px: int  # solid wall kept around the boundary; the void never crosses it
+    route: str = "geodesic"  # "geodesic" (void-matching straight channels) | "tpms" (gyroid surface)
+    drain: bool = False  # geodesic route: breach the skin so the network drains to the surface
 
 
 @dataclass(frozen=True)
@@ -491,7 +496,13 @@ def _build_gyroid(raw) -> GyroidChannel | None:
     skin = raw.get("skin_px", DEFAULT_GYROID["skin_px"])
     if not isinstance(skin, int) or isinstance(skin, bool) or skin < 0:
         raise ConfigError("grayscale.connect_voids.skin_px must be an integer >= 0")
-    return GyroidChannel(cell_mm=cell_mm, channel_px=channel, skin_px=skin)
+    route = raw.get("route", DEFAULT_GYROID["route"])
+    if route not in ("geodesic", "tpms"):
+        raise ConfigError("grayscale.connect_voids.route must be 'geodesic' or 'tpms'")
+    drain = raw.get("drain", DEFAULT_GYROID["drain"])
+    if not isinstance(drain, bool):
+        raise ConfigError("grayscale.connect_voids.drain must be true or false")
+    return GyroidChannel(cell_mm=cell_mm, channel_px=channel, skin_px=skin, route=route, drain=drain)
 
 
 def _build_grade(raw) -> Grade | None:

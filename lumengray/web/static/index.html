@@ -166,12 +166,17 @@
           </label>
         </div>
 
-        <div class="overlay-block" id="gyroid-block" title="Carve a continuous gyroid (minimal-surface) void through the part, connecting the isolated black/lumen cores into one interconnected, drainable perfusion network. Needs a void core (set 'Black core (px)' > 0); the channel scales with the core size. Composes on top of any mode above.">
-          <label class="overlay-head"><input type="checkbox" id="gyroid-on" /> Connect voids <span class="hint" id="gyroid-hint">— gyroid lumen network</span></label>
+        <div class="overlay-block" id="gyroid-block" title="Find every void in the tessellation cell (cores + graded void→light→void shells) and link them all into one connected, drainable network. Because the cell is periodic, the channels are planned on one unit cell and tiled, so the network matches the real voids exactly. Needs voids (a 'Black core (px)' > 0, or a grade that ramps to 0). Cubic + octet.">
+          <label class="overlay-head"><input type="checkbox" id="gyroid-on" /> Connect voids <span class="hint" id="gyroid-hint">— void-matching network</span></label>
           <div class="grid2" id="gyroid-params" hidden>
-            <label title="Gyroid unit-cell period in mm — the perfusion channel spacing.">Cell (mm)<input type="number" id="gy-cell" value="0.8" min="0.1" step="0.1" /></label>
-            <label title="Channel width as a multiple of the void core size — the connecting throat scales with the core (× core px, min 2px).">Channel (× core)<input type="number" id="gy-channel" value="1" min="0.1" step="0.1" /></label>
-            <label title="Solid wall kept around the outer boundary — the void never crosses it (0 = drain to surface).">Skin (px)<input type="number" id="gy-skin" value="3" min="0" step="1" /></label>
+            <label title="Channel routing between voids: Geodesic = shortest straight tubes; TPMS = organic curved tubes. Both link the same real voids.">Route<select id="gy-route">
+              <option value="geodesic" selected>Geodesic</option>
+              <option value="tpms">TPMS</option>
+            </select></label>
+            <label class="checkrow" title="Breach the outer skin at the ports so the network drains to the surface (perfusion). Off = fully enclosed."><input type="checkbox" id="gy-drain" /> Drain to surface</label>
+            <label title="Carved channel width, in whole pixels (voxels). 1 = a single-voxel channel; it stays connected because the path is laid down face-connected.">Channel (px)<input type="number" id="gy-channel" value="1" min="1" step="1" /></label>
+            <label title="Solid wall kept around the outer boundary — the void never crosses it (ignored when Drain is on).">Skin (px)<input type="number" id="gy-skin" value="3" min="0" step="1" /></label>
+            <label title="Legacy TPMS-surface fallback period (mm), used only for modes without a periodic cell (triangular / pure gradient).">Cell (mm)<input type="number" id="gy-cell" value="0.8" min="0.1" step="0.1" /></label>
           </div>
         </div>
 

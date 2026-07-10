@@ -36,12 +36,17 @@ stack update live.
   triangular from each triangle's edges to its centroid, octet radially into **both**
   its octahedral and tetrahedral void pockets. Design it live on the 3D **Element**
   view (one unit cell).
-- **Connect voids (gyroid overlay)** — a toggle that carves a continuous gyroid
-  (triply-periodic minimal surface) void through the output, threading the isolated
-  black/lumen **cores** into one interconnected, drainable perfusion network (a
-  tissue-scaffold vasculature analogue). Enabled only when there *are* voids to
-  connect — an explicit `core_px`, or a gradient that ramps to black — and the
-  channel width **scales with the core size**.
+- **Connect voids** — a toggle that finds **every** void in the print (black cores
+  *and* the shells of a void→light→void grade) and links them into one connected,
+  drainable perfusion network — a tissue-scaffold vasculature analogue. It isn't a
+  free-floating gyroid: because a tessellation is periodic, the channels are planned
+  on **one unit cell** and tiled, so they match the *actual* voids (cubic + octet).
+  Triangular's row spacing is irrational (not integer-tileable), so its layer-constant
+  voids are connected in 2D and extruded. **Route** is `geodesic` (shortest straight
+  tubes) or `tpms` (organic curved tubes); **Drain** breaches the skin so the network
+  reaches the surface. Enabled only when there *are* voids (a `core_px`, or a grade
+  that ramps to black). Pure-gradient (non-tessellation) parts fall back to the legacy
+  gyroid minimal surface.
 - **Live web studio** — upload, scrub the layer stack (with zoom), orbit the model in 3D
   (Mesh / Photostack / Wireframe / 1:1 Voxels / Element), hover-tooltips on every parameter, export.
 - **Reproducible** — every photostack ships a `manifest.json` (source + all parameters) and a
@@ -179,10 +184,12 @@ print(summary["layers"], "masks written")
       "boundary_px": 3, "grey_value": 128, "white_value": 255
     },
 
-    "connect_voids": {                           // overlay on ANY mode: gyroid lumen-connector
-      "cell_mm": 0.8,                            // gyroid unit-cell period (channel spacing)
-      "channel_px": 4,                           // carved void channel width (voxels)
-      "skin_px": 3                               // solid wall kept at the boundary
+    "connect_voids": {                           // link every void into one drainable network
+      "route": "geodesic",                       // "geodesic" (straight) | "tpms" (curved)
+      "channel_px": 1,                           // carved void channel width (voxels)
+      "drain": false,                            // true → breach the skin to drain to the surface
+      "skin_px": 3,                              // solid wall kept at the boundary (ignored when drain)
+      "cell_mm": 0.8                             // legacy TPMS-surface period (pure-gradient fallback only)
     },
 
     "grade": {                                   // structure->core exposure ramp (tessellation cells)
@@ -221,9 +228,12 @@ Two **overlays** compose on top of any of these:
   core) so the gradient flows cleanly inward: cubic by distance from the struts, triangular by
   distance from each triangle's lines to its centroid, and octet radially from **both** its void
   types — the octahedral holes (anti-nodes) and the tetrahedral pockets (quarter-cell sites).
-- **`connect_voids`** (`gyroid.py`) — carve a continuous gyroid (triply-periodic minimal
-  surface) void through the solid, threading isolated lumen pockets into one interconnected,
-  drainable network while keeping a `skin_px` solid wall at the boundary.
+- **`connect_voids`** (`void_connect.py`) — find every void and link them into one drainable
+  network. Exploits tessellation periodicity: plan the channels on one unit cell (via the
+  tiling-connectivity theorem — link each void component to a hub, then port to each face at
+  the hub's projected transverse coord) and tile them (cubic/octet); triangular connects its
+  layer-constant voids in 2D and extrudes. `route` = geodesic/tpms, `drain` breaches the skin.
+  Pure-gradient parts fall back to the legacy gyroid (`gyroid.py`).
 
 ---
 
@@ -244,7 +254,8 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask
 | `tessellation.py` | shared tessellation base + the cubic kind |
 | `triangulation.py` | triangular-prism kind, reusing the shared base |
 | `octet.py` | octet truss (Fuller tetrahedra+octahedra): strut generator, per-layer voxelizer + gradient depth |
-| `gyroid.py` | gyroid void-connector overlay (carves a TPMS lumen network into any layer) |
+| `void_connect.py` | algorithmic void-connector — per-cell unit-cell tiling (cubic/octet) + 2D-extrude (triangular), geodesic/tpms routes |
+| `gyroid.py` | legacy gyroid (TPMS) surface — fallback connector for pure-gradient parts |
 | `grade.py` | structure→core exposure gradient — applies the ramp to each mode's inward-depth field |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + `config_to_dict` serializer |
@@ -263,7 +274,7 @@ named from those parameters, e.g. `Rectangular-prism_50um_cubic-xy6-z6-s1-b3_cor
 ```bash
 pip install -e ".[web]"
 python smoke_test.py    # end-to-end: regions, gradient, rotation, cubic/triangular/octet tessellation,
-                        # octahedral cores, gyroid void-connector, structure→core grade, manifest
+                        # octahedral cores, void-connector, structure→core grade, manifest
 ```
 
 ## License

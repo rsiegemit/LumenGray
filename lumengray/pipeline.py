@@ -22,6 +22,10 @@ from .gyroid import gyroid_carve
 from .octet import octet_layer, octet_core_depth
 from .tessellation import tessellation_layer
 from .triangulation import triangulation_layer, tri_core_depth
+from .void_connect import connect_cell, connect_components_2d
+
+import numpy as np
+from scipy import ndimage
 
 PREVIEW_FILENAME = "_preview.png"
 
@@ -154,6 +158,130 @@ def _write_manifest(out_dir, config, summary, source, stl_path) -> None:
         json.dump(manifest, handle, indent=2)
 
 
+_VOID_CACHE: dict = {}
+
+
+def _cache_get(sig, builder):
+    """Memoize a connector build, bounded so interactive param tweaks (each a new
+    signature) don't accumulate full-resolution masks forever."""
+    if sig not in _VOID_CACHE:
+        if len(_VOID_CACHE) >= 16:
+            _VOID_CACHE.pop(next(iter(_VOID_CACHE)))
+        _VOID_CACHE[sig] = builder()
+    return _VOID_CACHE[sig]
+
+
+def _cell_void_volume(config: Config):
+    """One unit cell's 3D void mask (cz, cx, cx) for a tessellation mode, including
+    per-element grade. ``value == 0`` is void (black core / grade-to-lumen). Returns
+    (V, cx, cz, cap_bottom, cap_top) or None if no periodic tessellation is active."""
+    if config.octet is not None:
+        o = config.octet
+        cx, cz = o.cell_xy_px, o.cell_z_layers
+        oc = dataclasses.replace(o, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0)
+        solid = np.ones((cx, cx), dtype=bool)
+        V = np.zeros((cz, cx, cx), dtype=bool)
+        for zc in range(cz):
+            lay = octet_layer(solid, zc + 1, cz, oc)
+            if config.grade is not None:
+                lay = grade_layer(lay, solid, config.grade, octet_core_depth(solid.shape, zc, oc))
+            V[zc] = lay == 0
+        return V, cx, cz, o.cap_bottom_layers, o.cap_top_layers
+    if config.tessellation is not None:
+        t = config.tessellation
+        cx, cz = t.cube_xy_px, t.cube_z_layers
+        tc = dataclasses.replace(t, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0)
+        solid = np.ones((cx, cx), dtype=bool)
+        V = np.zeros((cz, cx, cx), dtype=bool)
+        for zc in range(cz):
+            lay = tessellation_layer(solid, zc + 1, cz, tc)
+            if config.grade is not None:
+                lay = grade_layer(lay, solid, config.grade, distance_depth(lay, tc.cube_xy_px / 2.0))
+            V[zc] = lay == 0
+        return V, cx, cz, t.cap_bottom_layers, t.cap_top_layers
+    return None  # triangular / non-tessellation: fall back to the legacy gyroid
+
+
+def _void_connector(config: Config):
+    """Cached (channels K (cz,cx,cx), cx, cz, cap_bottom, cap_top) for the active
+    cell, or None (no periodic cell → the mode isn't supported yet). Both routes
+    (geodesic + tpms) connect the real voids here; route only shapes the channel."""
+    g = config.gyroid
+    if g is None:
+        return None
+    base = config.octet if config.octet is not None else config.tessellation
+    sig = (repr(base), repr(config.grade), g.channel_px, g.route)
+
+    def build():
+        vol = _cell_void_volume(config)
+        if vol is None or not vol[0].any():
+            return None
+        V, cx, cz, cap_b, cap_t = vol
+        return (connect_cell(V, g.channel_px, g.route), cx, cz, cap_b, cap_t)
+
+    return _cache_get(sig, build)
+
+
+def _triangular_channels(config: Config, shape):
+    """Cached 2D channel mask connecting every triangular void (cores + graded
+    shells) into one network. Triangular row spacing is irrational, so it isn't
+    integer-tileable — but its void pattern is layer-independent (a Z-column), so we
+    connect it once in 2D (union over a Z-period) and extrude. None if no voids."""
+    g = config.gyroid
+    sig = ("tri", repr(config.triangulation), repr(config.grade), g.channel_px, g.route, shape)
+
+    def build():
+        t = config.triangulation
+        tc = dataclasses.replace(t, cap_bottom_layers=0, cap_top_layers=0, boundary_px=0)
+        full = np.ones(shape, dtype=bool)
+        V2 = np.zeros(shape, dtype=bool)
+        for zc in range(t.z_layers):  # union over a Z-period → the full void footprint
+            lay = triangulation_layer(full, zc + 1, t.z_layers, tc)
+            if config.grade is not None:
+                lay = grade_layer(lay, full, config.grade, tri_core_depth(shape, tc))
+            V2 |= lay == 0
+        return connect_components_2d(V2, g.channel_px, g.route) if V2.any() else None
+
+    return _cache_get(sig, build)
+
+
+def _void_connect_carve(layer, solid, layer_index, total_layers, config: Config):
+    """Carve the connecting channels. Cubic/octet tile a unit cell's channel pattern;
+    triangular extrudes a 2D-connected pattern; both void it inside the part."""
+    g = config.gyroid
+    if config.triangulation is not None:  # extrude the 2D void-connection network
+        t = config.triangulation
+        z = layer_index - 1 - t.cap_bottom_layers
+        if z < 0 or layer_index > total_layers - t.cap_top_layers:
+            return layer
+        chan = _triangular_channels(config, layer.shape)
+        if chan is None:
+            return layer
+        interior = solid if (g.drain or g.skin_px <= 0) else ndimage.distance_transform_edt(solid) > g.skin_px
+        return np.where(interior & chan, np.uint8(0), layer)
+    conn = _void_connector(config)
+    if conn is None:
+        # A tessellation with no voids has nothing to connect — do NOT fall back to
+        # the global gyroid (that was the stray "random TPMS"). Only pure-gradient
+        # (non-tessellation) parts, which have no periodic cell, use the legacy path.
+        if config.octet is not None or config.tessellation is not None:
+            return layer
+        return gyroid_carve(layer, solid, layer_index, config.printer, config.gyroid)
+    K, cx, cz, cap_b, cap_t = conn
+    z = layer_index - 1 - cap_b  # 0 at the first interior layer
+    if z < 0 or layer_index > total_layers - cap_t:  # solid caps: no channels
+        return layer
+    kz = K[z % cz]  # this cell-layer's channel pattern (cx, cx)
+    height, width = layer.shape
+    chan = np.tile(kz, (-(-height // cx), -(-width // cx)))[:height, :width]
+    g = config.gyroid
+    if g.drain or g.skin_px <= 0:
+        interior = solid  # reach the outer surface (drains)
+    else:
+        interior = ndimage.distance_transform_edt(solid) > g.skin_px  # keep a solid skin
+    return np.where(interior & chan, np.uint8(0), layer)
+
+
 def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     """Build one uint8 grayscale layer. Shared by the full run and the live preview."""
     if config.octet is not None:
@@ -175,8 +303,8 @@ def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
         else:
             depth = None
         layer = grade_layer(layer, solid, config.grade, depth)
-    if config.gyroid is not None:  # overlay: carve a connected gyroid lumen network
-        layer = gyroid_carve(layer, solid, index, config.printer, config.gyroid)
+    if config.gyroid is not None:  # overlay: connect every void into one network
+        layer = _void_connect_carve(layer, solid, index, total_layers, config)
     return layer
 
 
