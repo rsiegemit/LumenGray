@@ -173,8 +173,10 @@ def _cache_get(sig, builder):
 
 def _cell_void_volume(config: Config):
     """One unit cell's 3D void mask (cz, cx, cx) for a tessellation mode, including
-    per-element grade. ``value == 0`` is void (black core / grade-to-lumen). Returns
-    (V, cx, cz, cap_bottom, cap_top) or None if no periodic tessellation is active."""
+    per-element grade. A voxel is void when its exposure <= ``connect_voids.void_max``
+    (0 = only fully-black). Returns (V, cx, cz, cap_bottom, cap_top) or None if no
+    periodic tessellation is active."""
+    vm = config.gyroid.void_max if config.gyroid is not None else 0
     if config.octet is not None:
         o = config.octet
         cx, cz = o.cell_xy_px, o.cell_z_layers
@@ -185,7 +187,7 @@ def _cell_void_volume(config: Config):
             lay = octet_layer(solid, zc + 1, cz, oc)
             if config.grade is not None:
                 lay = grade_layer(lay, solid, config.grade, octet_core_depth(solid.shape, zc, oc))
-            V[zc] = lay == 0
+            V[zc] = lay <= vm
         return V, cx, cz, o.cap_bottom_layers, o.cap_top_layers
     if config.tessellation is not None:
         t = config.tessellation
@@ -197,7 +199,7 @@ def _cell_void_volume(config: Config):
             lay = tessellation_layer(solid, zc + 1, cz, tc)
             if config.grade is not None:
                 lay = grade_layer(lay, solid, config.grade, distance_depth(lay, tc.cube_xy_px / 2.0))
-            V[zc] = lay == 0
+            V[zc] = lay <= vm
         return V, cx, cz, t.cap_bottom_layers, t.cap_top_layers
     return None  # triangular / non-tessellation: fall back to the legacy gyroid
 
@@ -210,7 +212,7 @@ def _void_connector(config: Config):
     if g is None:
         return None
     base = config.octet if config.octet is not None else config.tessellation
-    sig = (repr(base), repr(config.grade), g.channel_px, g.route)
+    sig = (repr(base), repr(config.grade), g.channel_px, g.route, g.void_max)
 
     def build():
         vol = _cell_void_volume(config)
@@ -228,7 +230,7 @@ def _triangular_channels(config: Config, shape):
     integer-tileable — but its void pattern is layer-independent (a Z-column), so we
     connect it once in 2D (union over a Z-period) and extrude. None if no voids."""
     g = config.gyroid
-    sig = ("tri", repr(config.triangulation), repr(config.grade), g.channel_px, g.route, shape)
+    sig = ("tri", repr(config.triangulation), repr(config.grade), g.channel_px, g.route, g.void_max, shape)
 
     def build():
         t = config.triangulation
@@ -239,7 +241,7 @@ def _triangular_channels(config: Config, shape):
             lay = triangulation_layer(full, zc + 1, t.z_layers, tc)
             if config.grade is not None:
                 lay = grade_layer(lay, full, config.grade, tri_core_depth(shape, tc))
-            V2 |= lay == 0
+            V2 |= lay <= g.void_max
         # Cap bridges at ~1.5 triangle edges: enough to link neighbouring cell voids,
         # but far too short to draw a channel across the whole part from sparse voids.
         max_bridge = t.tri_px * 1.5
@@ -261,7 +263,7 @@ def _void_connect_carve(layer, solid, layer_index, total_layers, config: Config)
         if chan is None:
             return layer
         interior = solid if (g.drain or g.skin_px <= 0) else ndimage.distance_transform_edt(solid) > g.skin_px
-        return np.where(interior & chan, np.uint8(0), layer)
+        return np.where(interior & (chan | (layer <= g.void_max)), np.uint8(0), layer)
     conn = _void_connector(config)
     if conn is None:
         # A tessellation with no voids has nothing to connect — do NOT fall back to

@@ -126,7 +126,7 @@ export function buildConfig() {
     };
   }
   if ($("gyroid-on")?.checked && !$("gyroid-on").disabled) {  // overlay — needs void cores
-    config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: Math.max(1, int("gy-channel", 1)), skin_px: int("gy-skin", 3), route: $("gy-route")?.value || "geodesic", drain: !!$("gy-drain")?.checked };
+    config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: Math.max(1, int("gy-channel", 1)), skin_px: int("gy-skin", 3), route: $("gy-route")?.value || "geodesic", drain: !!$("gy-drain")?.checked, void_max: Math.min(254, Math.max(0, int("gy-voidmax", 0))) };
   }
   if ($("grade-on")?.checked) {  // structure→core exposure gradient (tessellation cells)
     config.grayscale.grade = getRamp();
@@ -181,6 +181,7 @@ export function applyConfig(c) {
     setVal("gy-skin", gy.skin_px);
     if (gy.route) setVal("gy-route", gy.route);
     if ($("gy-drain")) $("gy-drain").checked = !!gy.drain;
+    if (gy.void_max != null) setVal("gy-voidmax", gy.void_max);
   }
   $("gyroid-on").checked = !!gy;
   updateGyroidAvail();

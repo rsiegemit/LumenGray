@@ -192,6 +192,7 @@ print(summary["layers"], "masks written")
 
     "connect_voids": {                           // link every void into one drainable network
       "route": "geodesic",                       // "geodesic" (straight) | "tpms" (curved)
+      "void_max": 0,                             // exposure <= this counts as void (0 = only black)
       "channel_px": 1,                           // carved void channel width (voxels)
       "drain": false,                            // true → breach the skin to drain to the surface
       "skin_px": 3,                              // solid wall kept at the boundary (ignored when drain)

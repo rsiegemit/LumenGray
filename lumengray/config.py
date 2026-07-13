@@ -68,6 +68,7 @@ DEFAULT_GYROID = {
     "skin_px": 3,  # solid wall kept around the part boundary (void never breaches it)
     "route": "geodesic",  # "geodesic" (void-matching channels) | "tpms" (gyroid surface)
     "drain": False,  # geodesic route: breach the skin so the network drains to the surface
+    "void_max": 0,  # exposure at/below this counts as void (0 = only fully-black voxels)
 }
 
 # Structure->core exposure gradient defaults (grades tessellation cells by distance).
@@ -176,6 +177,8 @@ class GyroidChannel:
     skin_px: int  # solid wall kept around the boundary; the void never crosses it
     route: str = "geodesic"  # "geodesic" (void-matching straight channels) | "tpms" (gyroid surface)
     drain: bool = False  # geodesic route: breach the skin so the network drains to the surface
+    void_max: int = 0  # exposure at/below this counts as void (0 = only fully-black); those regions
+    #                    are opened to lumen and linked — lets a gradient's near-0 cores connect
 
 
 @dataclass(frozen=True)
@@ -502,7 +505,10 @@ def _build_gyroid(raw) -> GyroidChannel | None:
     drain = raw.get("drain", DEFAULT_GYROID["drain"])
     if not isinstance(drain, bool):
         raise ConfigError("grayscale.connect_voids.drain must be true or false")
-    return GyroidChannel(cell_mm=cell_mm, channel_px=channel, skin_px=skin, route=route, drain=drain)
+    void_max = raw.get("void_max", DEFAULT_GYROID["void_max"])
+    if not isinstance(void_max, int) or isinstance(void_max, bool) or not (0 <= void_max <= 254):
+        raise ConfigError("grayscale.connect_voids.void_max must be an integer in 0..254")
+    return GyroidChannel(cell_mm=cell_mm, channel_px=channel, skin_px=skin, route=route, drain=drain, void_max=void_max)
 
 
 def _build_grade(raw) -> Grade | None:
