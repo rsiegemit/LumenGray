@@ -66,6 +66,23 @@ jobs:
           name: LumenGray-windows
           path: dist/LumenGray-windows.zip
 
+      # --- Windows: build the one-click installer (LumenGray-Setup.exe) ---
+      - name: Build Windows installer (Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $ver = "0.1.0"
+          if ($env:GITHUB_REF -like "refs/tags/v*") { $ver = ($env:GITHUB_REF -replace "refs/tags/v","") }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging\lumengray.iss
+
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumenGray-Setup
+          path: dist/LumenGray-Setup.exe
+
       # --- On tag pushes, attach the build to the GitHub Release ---
       - name: Attach to Release (macOS)
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
@@ -77,4 +94,6 @@ jobs:
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/LumenGray-windows.zip
+          files: |
+            dist/LumenGray-Setup.exe
+            dist/LumenGray-windows.zip

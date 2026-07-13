@@ -56,7 +56,13 @@ stack update live.
 
 ---
 
-## Install
+## Download for Windows (one-click)
+
+**[⬇ Download LumenGray-Setup.exe](https://github.com/rsiegemit/LumenGray/releases/latest/download/LumenGray-Setup.exe)** — run the installer (no admin needed), then launch **LumenGray** from the Start Menu. It starts a local server and opens the studio in your browser automatically; no Python required.
+
+> First launch may show a Windows SmartScreen warning (the installer isn't code-signed) — click **More info → Run anyway**. Prefer no installer? Grab the portable **`LumenGray-windows.zip`** from the [latest release](https://github.com/rsiegemit/LumenGray/releases/latest), unzip, and run `LumenGray.exe`. A macOS `.app` is on the same release.
+
+## Install (from source)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate

@@ -40,14 +40,17 @@ LumenGray ready to use. To stop the app, just quit it (close it from the Dock).
 
 ## Windows
 
-### 1. Download
+### 1. Download the installer
 
-Download **`LumenGray-windows.zip`**, right-click it, and choose
-**Extract All…**. Open the extracted **LumenGray** folder.
+Download **`LumenGray-Setup.exe`** from the
+[latest release](https://github.com/rsiegemit/LumenGray/releases/latest)
+(or use the **Download for Windows** button in the main README).
 
-### 2. Run it
+### 2. Run the installer
 
-Double-click **`LumenGray.exe`** inside that folder.
+Double-click **`LumenGray-Setup.exe`**. It installs for just your account, so it
+**won't ask for an administrator password**, and it adds **LumenGray** to your
+Start Menu (and a Desktop shortcut if you tick the box).
 
 ### 3. Get past the blue "Windows protected your PC" screen (important)
 
@@ -57,12 +60,13 @@ The first time you run it, Windows SmartScreen may show a blue box that says
 1. Click the small **More info** link in that blue box.
 2. A **Run anyway** button appears — click it.
 
-LumenGray will start, and your default web browser opens automatically with the
-app ready to use.
+Then launch **LumenGray** from the Start Menu; your default browser opens
+automatically with the app ready to use. To remove it later, use
+**Settings → Apps** like any other program.
 
-> Tip: keep all the files together in the LumenGray folder. The `.exe` needs the
-> other files next to it to run. You can make a desktop shortcut to
-> `LumenGray.exe` if you want quick access.
+> Prefer no installer? Download the portable **`LumenGray-windows.zip`** instead,
+> right-click → **Extract All…**, open the **LumenGray** folder, and run
+> **`LumenGray.exe`**. Keep all the files in that folder together.
 
 ---
 
