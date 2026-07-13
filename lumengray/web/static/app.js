@@ -347,6 +347,7 @@ function wire() {
   $("next-layer").addEventListener("click", () => { state.index = Math.min(state.total, state.index + 1); syncSlider(); schedulePreview(); });
   wireZoom();
 
+  $("update-btn").addEventListener("click", checkForUpdates);
   $("export-btn").addEventListener("click", exportStack);
   $("copy-config").addEventListener("click", () => navigator.clipboard.writeText($("config-json").textContent).then(() => status("Config copied to clipboard")));
   $("download-config").addEventListener("click", () => downloadBlob(new Blob([$("config-json").textContent], { type: "application/json" }), "lumengray.config.json"));
@@ -355,6 +356,31 @@ function wire() {
   updateGyroidAvail();
   refreshConfigJson();
   loadPresets();
+}
+
+// Ask the server to compare our version to the latest GitHub release. Read-only:
+// on an update it just surfaces a download link — the user runs the installer.
+async function checkForUpdates() {
+  const banner = $("update-banner");
+  banner.hidden = true;
+  status("Checking for updates…", "busy");
+  try {
+    const d = await fetch("/api/check-update").then((r) => r.json());
+    if (!d.ok) { status(d.error || "Update check failed.", "error"); return; }
+    if (d.update_available) {
+      const isWin = /Win/i.test(navigator.userAgent) || /Win/i.test(navigator.platform || "");
+      const url = isWin ? d.windows_installer_url : d.releases_url;
+      banner.innerHTML =
+        `A new version is available: <strong>v${d.latest}</strong> (you have v${d.current}). ` +
+        `<a href="${url}" target="_blank" rel="noopener">Download ↗</a> — then run the installer to update.`;
+      banner.hidden = false;
+      status(`Update available: v${d.latest}`);
+    } else {
+      status(`You're on the latest version (v${d.current}).`);
+    }
+  } catch (e) {
+    status("Update check failed.", "error");
+  }
 }
 
 wire();

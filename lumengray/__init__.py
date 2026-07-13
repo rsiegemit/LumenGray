@@ -1,5 +1,6 @@
 """Lumen X3 grayscale photostack pipeline (protocol steps 1-3)."""
 
+from ._version import __version__
 from .config import (
     Config,
     CubicTessellation,
@@ -12,6 +13,7 @@ from .config import (
 from .pipeline import run
 
 __all__ = [
+    "__version__",
     "Config",
     "CubicTessellation",
     "TriangularTessellation",

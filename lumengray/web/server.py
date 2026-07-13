@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import tempfile
+import urllib.request
 import uuid
 import zipfile
 from dataclasses import dataclass, replace
@@ -38,6 +39,19 @@ from .presets import PRESETS, build_preset_mesh, get_preset, mode_of, resolve_pa
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
+GITHUB_REPO = "rsiegemit/LumenGray"
+RELEASES_LATEST_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
+
+
+def _version_tuple(v: str) -> tuple:
+    """Parse 'v1.2.3' / '1.2.3' → (1, 2, 3) for comparison; non-numeric parts → 0."""
+    out = []
+    for part in str(v).lstrip("vV").split(".")[:3]:
+        digits = "".join(c for c in part if c.isdigit())
+        out.append(int(digits) if digits else 0)
+    return tuple(out) + (0,) * (3 - len(out))
 
 
 @dataclass
@@ -784,6 +798,43 @@ def create_app() -> FastAPI:
             "cell_mm": [round(cx * pixel_mm, 4), round(cx * length_mm, 4), round(cz * layer_mm, 4)],
             "voxel_size_mm": [round(pixel_mm, 4), round(length_mm, 4), round(layer_mm, 4)],
             "count": len(fill),
+        }
+
+    @app.get("/api/check-update")
+    def check_update() -> dict:
+        """Compare the running version to the latest GitHub release. Read-only: it
+        does NOT modify the app — the UI offers a download link and the user runs the
+        installer. Fails soft when offline."""
+        from .. import __version__
+
+        try:
+            # Verify TLS against certifi's CA bundle — a frozen PyInstaller app has no
+            # system cert path, so the default context would fail cert verification.
+            import ssl
+
+            try:
+                import certifi
+
+                ctx = ssl.create_default_context(cafile=certifi.where())
+            except Exception:
+                ctx = ssl.create_default_context()
+            req = urllib.request.Request(
+                RELEASES_LATEST_API,
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "LumenGray"},
+            )
+            with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return {"ok": False, "current": __version__, "error": "Couldn't reach GitHub — check your connection."}
+        latest = (data.get("tag_name") or "").lstrip("vV")
+        return {
+            "ok": True,
+            "current": __version__,
+            "latest": latest,
+            "update_available": bool(latest) and _version_tuple(latest) > _version_tuple(__version__),
+            "releases_url": data.get("html_url") or RELEASES_PAGE,
+            "windows_installer_url": f"https://github.com/{GITHUB_REPO}/releases/latest/download/LumenGray-Setup.exe",
+            "notes": data.get("body") or "",
         }
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

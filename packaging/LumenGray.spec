@@ -38,7 +38,9 @@ hiddenimports = []
 datas += collect_data_files("lumengray", include_py_files=True)
 
 # Heavy scientific deps with their own data files and lazy submodules.
-for pkg in ("trimesh", "scipy"):
+# certifi ships its CA bundle (cacert.pem) so the in-app update check's HTTPS call
+# can verify TLS from inside the frozen bundle.
+for pkg in ("trimesh", "scipy", "certifi"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
     datas += pkg_datas
     binaries += pkg_binaries
