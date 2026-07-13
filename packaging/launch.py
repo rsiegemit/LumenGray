@@ -87,7 +87,10 @@ def main() -> int:
     ).start()
 
     # Serve the app OBJECT directly: no import string, no reload (required frozen).
-    uvicorn.run(app, host=HOST, port=port, log_level="info")
+    # log_config=None: skip uvicorn's dictConfig — its default "default"/"access"
+    # formatters fail to configure inside a PyInstaller bundle ("Unable to configure
+    # formatter 'default'"), which crashed the launcher before the server started.
+    uvicorn.run(app, host=HOST, port=port, log_level="info", log_config=None)
     return 0
 
 
