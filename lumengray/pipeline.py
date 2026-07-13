@@ -240,7 +240,10 @@ def _triangular_channels(config: Config, shape):
             if config.grade is not None:
                 lay = grade_layer(lay, full, config.grade, tri_core_depth(shape, tc))
             V2 |= lay == 0
-        return connect_components_2d(V2, g.channel_px, g.route) if V2.any() else None
+        # Cap bridges at ~1.5 triangle edges: enough to link neighbouring cell voids,
+        # but far too short to draw a channel across the whole part from sparse voids.
+        max_bridge = t.tri_px * 1.5
+        return connect_components_2d(V2, g.channel_px, g.route, max_bridge) if V2.any() else None
 
     return _cache_get(sig, build)
 

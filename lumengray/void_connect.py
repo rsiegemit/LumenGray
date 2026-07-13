@@ -61,12 +61,18 @@ def _carve_segment_2d(center: np.ndarray, a, b, route: str = "geodesic") -> None
     _write6(center, p)
 
 
-def connect_components_2d(V2: np.ndarray, channel_px: int, route: str = "geodesic") -> np.ndarray:
+def connect_components_2d(V2: np.ndarray, channel_px: int, route: str = "geodesic",
+                          max_bridge: float | None = None) -> np.ndarray:
     """Link every 2D void component into one network via a closest-point-bridge MST.
     Candidate edges come from each component's nearest centroids (cheap), but each
     edge is carved between the two components' *closest sampled points* — so
     concentric shells (coincident centroids, e.g. a void->light->void grade) still
-    bridge radially. Returns a boolean channel mask to extrude across the layers."""
+    bridge radially. Returns a boolean channel mask to extrude across the layers.
+
+    ``max_bridge`` (px) caps how far a channel may reach: edges longer than it are
+    dropped, so sparse/scattered voids (e.g. a linear grade that only touches 0 at a
+    few rasterization-lucky centroids) are NOT joined by model-spanning lines. Voids
+    that can't be reached locally are simply left separate — honest, not ugly."""
     labels, n = ndimage.label(V2)
     if n <= 1:
         return np.zeros_like(V2)
@@ -90,6 +96,7 @@ def connect_components_2d(V2: np.ndarray, channel_px: int, route: str = "geodesi
             _pix[i] = np.column_stack([rr, cc])
         return _pix[i]
 
+    max_d2 = (max_bridge * max_bridge) if max_bridge is not None else float("inf")
     edges = []
     for i in range(n):
         for j in idxs[i][1:]:
@@ -98,8 +105,11 @@ def connect_components_2d(V2: np.ndarray, channel_px: int, route: str = "geodesi
                 continue
             ci, cj = pix(i), pix(j)
             d2 = ((ci[:, None, :] - cj[None, :, :]) ** 2).sum(-1)
+            best = float(d2.min())
+            if best > max_d2:  # too far to be a local link — never span the model
+                continue
             fa, fb = np.unravel_index(int(d2.argmin()), d2.shape)
-            edges.append((float(d2.min()), i, j, ci[fa], cj[fb]))
+            edges.append((best, i, j, ci[fa], cj[fb]))
     edges.sort(key=lambda e: e[0])
 
     parent = list(range(n))
@@ -110,17 +120,14 @@ def connect_components_2d(V2: np.ndarray, channel_px: int, route: str = "geodesi
         return x
 
     center = np.zeros_like(V2)
-    roots = set(range(n))
     for _w, i, j, pa, pb in edges:
         ri, rj = find(i), find(j)
         if ri != rj:
             parent[ri] = rj
-            roots.discard(ri)
             _carve_segment_2d(center, pa, pb, route)
-    # k-NN candidates can leave the graph disconnected — chain any remaining roots.
-    remaining = sorted({find(r) for r in range(n)})
-    for a, b in zip(remaining, remaining[1:]):
-        _carve_segment_2d(center, cents[a], cents[b], route)
+    # No long-distance fallback: components that no capped edge reaches stay separate
+    # (a spanning tree of a well-formed void lattice is fully connected by local edges
+    # already; only genuinely-isolated noise is left alone — never bridged across the part).
 
     rad = (channel_px - 1) // 2
     return ndimage.binary_dilation(center, structure=_disk(rad)) if rad > 0 else center
