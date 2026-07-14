@@ -136,6 +136,51 @@ async function uploadFile(file) {
   }
 }
 
+// A dropped/picked file is either a model (.stl) or a saved settings file
+// (manifest.json / a downloaded config .json). Route by extension.
+function handleFile(file) {
+  if (!file) return;
+  if (/\.json$/i.test(file.name)) loadConfigFile(file);
+  else uploadFile(file);
+}
+
+// Load a manifest.json (or a downloaded config .json) and apply every setting.
+// A manifest also records its source model: if that was a built-in example we
+// rebuild it exactly (so the export re-derives the same descriptive name); if it
+// was an uploaded STL we can only restore the settings and ask for the STL.
+async function loadConfigFile(file) {
+  status("Loading " + file.name + "…", "busy");
+  let obj;
+  try {
+    obj = JSON.parse(await file.text());
+  } catch (e) {
+    status("Couldn't read " + file.name + " — not valid JSON.", "error");
+    return;
+  }
+  if (!obj || !obj.grayscale) {
+    status("That file has no LumenGray settings (missing \"grayscale\").", "error");
+    return;
+  }
+  const src = obj.source || {};
+  try {
+    if (src.kind === "preset" && PRESET_DEFS[src.preset_id]) {
+      await loadPreset(src.preset_id, src.dimensions_mm || null); // rebuild the exact model
+    }
+    applyConfig(obj); // settings on top (overrides the preset's own defaults)
+    if (state.id) {
+      requestPreview();
+      scheduleView3D();
+      status("Loaded settings from " + file.name);
+    } else if (src.kind === "upload") {
+      status("Settings loaded from " + file.name + " — now drop " + (src.filename || "the STL") + " to render.");
+    } else {
+      status("Settings loaded from " + file.name + " — drop a model to render.");
+    }
+  } catch (e) {
+    status(e.message, "error");
+  }
+}
+
 // ── Live 2D preview ──────────────────────────────────────
 let previewTimer = null;
 function schedulePreview() {
@@ -276,11 +321,15 @@ async function exportStack() {
 
 // ── Wiring ───────────────────────────────────────────────
 function wire() {
-  $("file-input").addEventListener("change", (e) => uploadFile(e.target.files[0]));
+  $("file-input").addEventListener("change", (e) => handleFile(e.target.files[0]));
   const dz = $("dropzone");
   ["dragover", "dragenter"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
   ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, () => dz.classList.remove("drag")));
-  dz.addEventListener("drop", (e) => { e.preventDefault(); uploadFile(e.dataTransfer.files[0]); });
+  dz.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
+
+  // "Load .json": restore settings (and the model, for example-based manifests)
+  $("load-config").addEventListener("click", () => $("config-file").click());
+  $("config-file").addEventListener("change", (e) => { loadConfigFile(e.target.files[0]); e.target.value = ""; });
 
   // every control → live config + 2D preview + (debounced) 3D rebuild. The 3D
   // toolbar controls (bands, cutaway, slab) handle themselves and aren't config.

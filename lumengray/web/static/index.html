@@ -49,9 +49,9 @@
       <section class="card" id="drop-card">
         <h2>Model</h2>
         <label class="dropzone" id="dropzone">
-          <input type="file" id="file-input" accept=".stl" hidden />
+          <input type="file" id="file-input" accept=".stl,.json" hidden />
           <span class="dz-icon">⬆</span>
-          <span class="dz-text">Drop an <strong>.stl</strong> here<br />or click to browse</span>
+          <span class="dz-text">Drop an <strong>.stl</strong> or a saved <strong>manifest.json</strong><br />here, or click to browse</span>
         </label>
         <dl class="meta" id="model-meta" hidden>
           <div><dt>File</dt><dd id="m-name">—</dd></div>
@@ -225,6 +225,8 @@
           <div class="row">
             <button class="ghost-btn" id="copy-config">Copy</button>
             <button class="ghost-btn" id="download-config">Download .json</button>
+            <button class="ghost-btn" id="load-config">Load .json</button>
+            <input type="file" id="config-file" accept=".json" hidden />
           </div>
         </details>
       </section>
