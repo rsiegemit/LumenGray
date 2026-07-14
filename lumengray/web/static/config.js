@@ -50,9 +50,13 @@ export function activeCorePx() {
   return core;
 }
 
-// Connect voids (gyroid) only makes sense when there ARE voids to connect: an
-// explicit black core, or a gradient that ramps to black.
+// Connect voids only makes sense when there ARE voids to connect: an explicit
+// black core, a structure→core grade that ramps to black, or — in gradient mode —
+// the positional ramp itself, which can dip to void (a void→light→void design).
+// In gradient mode it's always offered (raise "Void ≤" to catch near-black too);
+// with no actual voids the carve is simply a no-op.
 export function hasVoids() {
+  if (currentMode() === "gradient") return true;
   return activeCorePx() > 0 || gradeReachesBlack();
 }
 

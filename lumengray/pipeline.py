@@ -18,7 +18,6 @@ from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
 from .grade import grade_layer, distance_depth
-from .gyroid import gyroid_carve
 from .octet import octet_layer, octet_core_depth
 from .tessellation import tessellation_layer
 from .triangulation import triangulation_layer, tri_core_depth
@@ -266,12 +265,21 @@ def _void_connect_carve(layer, solid, layer_index, total_layers, config: Config)
         return np.where(interior & (chan | (layer <= g.void_max)), np.uint8(0), layer)
     conn = _void_connector(config)
     if conn is None:
-        # A tessellation with no voids has nothing to connect — do NOT fall back to
-        # the global gyroid (that was the stray "random TPMS"). Only pure-gradient
-        # (non-tessellation) parts, which have no periodic cell, use the legacy path.
+        # A tessellation with no voids has nothing to connect.
         if config.octet is not None or config.tessellation is not None:
             return layer
-        return gyroid_carve(layer, solid, layer_index, config.printer, config.gyroid)
+        # Non-periodic (gradient / uniform / regions): no tileable cell, so connect
+        # THIS layer's real voids directly in 2D. The gradient field is smooth, so
+        # neighbouring layers' channels overlap and the network joins through Z;
+        # concentric void shells (a void→light→void ramp) bridge radially. No
+        # bridge cap here — the point is to match EVERY void, even across a bright
+        # band — and a smooth field yields clean nested shells, not scattered noise.
+        voids = (layer <= g.void_max) & solid
+        if not voids.any():
+            return layer
+        chan = connect_components_2d(voids, g.channel_px, g.route)
+        interior = solid if (g.drain or g.skin_px <= 0) else ndimage.distance_transform_edt(solid) > g.skin_px
+        return np.where(interior & (chan | (layer <= g.void_max)), np.uint8(0), layer)
     K, cx, cz, cap_b, cap_t = conn
     z = layer_index - 1 - cap_b  # 0 at the first interior layer
     if z < 0 or layer_index > total_layers - cap_t:  # solid caps: no channels
