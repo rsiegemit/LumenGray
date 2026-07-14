@@ -211,6 +211,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .update-banner a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .update-banner a:hover { text-decoration: underline; }
 .wf-lead { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.seg-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 8px 0 4px; }
 .wf-thresh { display: flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); white-space: nowrap; }
 .wf-thresh input[type=number] { width: 52px; padding: 4px 6px; background: var(--card-2); border: 1px solid var(--border, #2a323d); border-radius: 6px; color: var(--text, #e6e9ef); font-size: 12px; }
 .wf-slab { display: flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); white-space: nowrap; }

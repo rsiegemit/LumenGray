@@ -14,18 +14,23 @@ from scipy import ndimage
 from .config import Grade
 
 
-def _profile(f: np.ndarray, grade: Grade) -> np.ndarray:
-    """Map normalized distance-from-structure ``f`` (0 at struts -> 1 at core) to an
-    8-bit exposure via the ramp's (pos, value) stops — ``linear`` interpolates
-    between them, ``step`` holds each stop's value until the next."""
-    pos = np.array([s[0] for s in grade.stops], dtype=np.float64)
-    val = np.array([s[1] for s in grade.stops], dtype=np.float64)
-    if grade.interp == "step":
+def apply_ramp(f: np.ndarray, stops, interp: str) -> np.ndarray:
+    """Map a normalized field ``f`` (0..1) to 8-bit exposure via (pos, value) stops —
+    ``linear`` interpolates between them, ``step`` holds each stop's value until the
+    next. Shared by the base gradient and the structure->core grade."""
+    pos = np.array([s[0] for s in stops], dtype=np.float64)
+    val = np.array([s[1] for s in stops], dtype=np.float64)
+    if interp == "step":
         idx = np.clip(np.searchsorted(pos, f, side="right") - 1, 0, len(val) - 1)
         out = val[idx]
     else:
         out = np.interp(f, pos, val)  # clamps to the end values outside [pos0, posN]
     return np.round(out).astype(np.uint8)
+
+
+def _profile(f: np.ndarray, grade: Grade) -> np.ndarray:
+    """Structure->core ramp: normalized distance-from-structure ``f`` (0 struts -> 1 core)."""
+    return apply_ramp(f, grade.stops, grade.interp)
 
 
 def distance_depth(layer: np.ndarray, norm_px: float) -> np.ndarray | None:

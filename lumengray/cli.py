@@ -7,7 +7,6 @@ import sys
 
 from .config import (
     ConfigError,
-    Gradient,
     default_config,
     default_tessellation,
     load_config,
@@ -29,12 +28,6 @@ def main(argv: list[str] | None = None) -> int:
         "--voxel-height-um",
         type=float,
         help="override voxel height (Z) in microns (20 / 50 / 100)",
-    )
-    parser.add_argument(
-        "--falloff-mm",
-        type=float,
-        help="override the edge_feather gradient falloff (mm); enables a default "
-        "gradient if the config has none",
     )
     parser.add_argument(
         "--cubic-tessellation",
@@ -63,8 +56,6 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(args.config) if args.config else default_config()
         if args.voxel_height_um is not None:
             config = _override_voxel_height(config, args.voxel_height_um)
-        if args.falloff_mm is not None:
-            config = _override_falloff(config, args.falloff_mm)
         config = _override_tessellation(config, args.cubic_tessellation, args.grey_value)
         config = _override_rotation(config, args.rotate_x, args.rotate_y, args.rotate_z)
         summary = run(
@@ -106,16 +97,6 @@ def _override_voxel_height(config, voxel_height_um):
 
     printer = replace(config.printer, voxel_height_um=float(voxel_height_um))
     return replace(config, printer=printer)
-
-
-def _override_falloff(config, falloff_mm):
-    from dataclasses import replace
-
-    if falloff_mm <= 0:
-        raise ConfigError("--falloff-mm must be positive")
-    gradient = config.gradient or Gradient("edge_feather", 40, 255, falloff_mm)
-    gradient = replace(gradient, falloff_mm=float(falloff_mm))
-    return replace(config, gradient=gradient)
 
 
 def _override_tessellation(config, enable, grey_value):

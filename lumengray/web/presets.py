@@ -35,8 +35,8 @@ def _cubic(**overrides) -> dict:
     return _config({"cubic_tessellation": base})
 
 
-def _gradient(gmin: int, gmax: int, falloff_mm: float) -> dict:
-    return _config({"gradient": {"type": "edge_feather", "min": gmin, "max": gmax, "falloff_mm": falloff_mm}})
+def _gradient(edge: int, center: int) -> dict:
+    return _config({"gradient": {"mode": "radial", "stops": [[0.0, center], [1.0, edge]], "interp": "linear"}})
 
 
 def _uniform(value: int = 255) -> dict:
@@ -88,18 +88,18 @@ PRESETS = [
     {
         "id": "cylinder",
         "name": "Cylinder",
-        "description": "edge-feather gradient on a round wall",
+        "description": "radial gradient on a round wall",
         "params": [_p("diameter", "Diameter (mm)", 10.0), _p("height", "Height (mm)", 6.0)],
         "build": lambda p: trimesh.creation.cylinder(radius=p["diameter"] / 2.0, height=p["height"]),
-        "config": _gradient(40, 255, 1.0),
+        "config": _gradient(40, 255),
     },
     {
         "id": "sphere",
         "name": "Sphere",
-        "description": "soft edge-feather gradient",
+        "description": "soft radial gradient",
         "params": [_p("diameter", "Diameter (mm)", 10.0)],
         "build": lambda p: trimesh.creation.icosphere(subdivisions=3, radius=p["diameter"] / 2.0),
-        "config": _gradient(20, 255, 1.5),
+        "config": _gradient(20, 255),
     },
     {
         "id": "torus",

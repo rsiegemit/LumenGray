@@ -2,7 +2,9 @@
 // config object back into the controls (used by presets / "load config").
 
 import { $, setVal } from "./core.js";
-import { getRamp, setRamp } from "./ramp.js";
+import { ramp } from "./ramp.js";
+
+const gradeRamp = () => ramp("grade")?.getRamp() || { stops: [[0, 255], [1, 0]], interp: "linear" };
 
 const int = (id, d) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) ? v : d; };
 const num = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : d; };
@@ -17,7 +19,7 @@ const cellPxOf = (m) => (m === "cubic" ? int("t-cube-xy", 6) : m === "triangular
 // black void core too, even without an explicit core_px.
 export function gradeReachesBlack() {
   if (!$("grade-on")?.checked || $("grade-on").disabled) return false;
-  return getRamp().stops.some((s) => s[1] <= 0);
+  return gradeRamp().stops.some((s) => s[1] <= 0);
 }
 
 // Radius (px) of the gradient's black core: the ramp hits 0 at normalized
@@ -26,7 +28,7 @@ export function gradeReachesBlack() {
 function gradeBlackRadiusPx(m) {
   const cellPx = cellPxOf(m);
   if (!cellPx) return 0;
-  const stops = getRamp().stops; // ascending by position
+  const stops = gradeRamp().stops; // ascending by position
   let d0 = 1;
   for (let i = 0; i < stops.length - 1; i++) {
     const [p0, v0] = stops[i], [p1, v1] = stops[i + 1];
@@ -82,11 +84,12 @@ export function buildConfig() {
   if (mode === "uniform") {
     config.grayscale.default_solid_value = int("solid-value", 255);
   } else if (mode === "gradient") {
+    const r = ramp("gradient")?.getRamp() || { stops: [[0, 255], [1, 0]], interp: "linear" };
     config.grayscale.gradient = {
-      type: "edge_feather",
-      min: int("g-min", 40),
-      max: int("g-max", 255),
-      falloff_mm: num("g-falloff", 0.35),
+      mode: document.querySelector("#grad-mode button.active")?.dataset.gmode || "radial",
+      axis: document.querySelector("#grad-axis button.active")?.dataset.gaxis || "x",
+      stops: r.stops,
+      interp: r.interp,
     };
   } else if (mode === "cubic") {
     config.grayscale.cubic_tessellation = {
@@ -129,7 +132,7 @@ export function buildConfig() {
     config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: Math.max(1, int("gy-channel", 1)), skin_px: int("gy-skin", 3), route: $("gy-route")?.value || "geodesic", drain: !!$("gy-drain")?.checked, void_max: Math.min(254, Math.max(0, int("gy-voidmax", 0))) };
   }
   if ($("grade-on")?.checked) {  // structure→core exposure gradient (tessellation cells)
-    config.grayscale.grade = getRamp();
+    config.grayscale.grade = gradeRamp();
   }
   return config;
 }
@@ -168,7 +171,14 @@ export function applyConfig(c) {
     setVal("oc-core", t.core_px); setVal("oc-boundary", t.boundary_px); setVal("oc-grey", t.grey_value); setVal("oc-white", t.white_value);
     selectMode("octet");
   } else if (g.gradient) {
-    setVal("g-min", g.gradient.min); setVal("g-max", g.gradient.max); setVal("g-falloff", g.gradient.falloff_mm);
+    const gd = g.gradient, gmode = gd.mode || "radial";
+    document.querySelectorAll("#grad-mode button").forEach((b) => b.classList.toggle("active", b.dataset.gmode === gmode));
+    document.querySelectorAll("#grad-axis button").forEach((b) => b.classList.toggle("active", b.dataset.gaxis === (gd.axis || "x")));
+    document.querySelectorAll("#grad-interp button").forEach((b) => b.classList.toggle("active", b.dataset.interp === (gd.interp || "linear")));
+    if (gd.stops) ramp("gradient")?.setRamp({ stops: gd.stops, interp: gd.interp });
+    $("grad-axis-wrap").hidden = gmode !== "linear";
+    $("grad-ax-lo").textContent = gmode === "linear" ? "start" : "centre";
+    $("grad-ax-hi").textContent = gmode === "linear" ? "end" : "edge";
     selectMode("gradient");
   } else {
     setVal("solid-value", g.default_solid_value);
@@ -188,7 +198,7 @@ export function applyConfig(c) {
   const gr = g.grade;
   $("grade-on").checked = !!gr;
   if (gr) {
-    setRamp(gr);
+    ramp("grade")?.setRamp(gr);
     document.querySelectorAll("#grade-interp button").forEach((b) => b.classList.toggle("active", b.dataset.interp === (gr.interp || "linear")));
   }
   $("grade-params").hidden = !gr;
@@ -198,6 +208,6 @@ export function applyConfig(c) {
 
 // keep slider <output> labels in sync with their inputs
 export function updateOutputs() {
-  const pairs = [["solid-value", "o-solid"], ["g-min", "o-gmin"], ["g-max", "o-gmax"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"]];
+  const pairs = [["solid-value", "o-solid"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"]];
   pairs.forEach(([inp, out]) => { const o = $(out); if (o) o.textContent = $(inp).value; });
 }

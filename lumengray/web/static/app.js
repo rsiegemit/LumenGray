@@ -5,7 +5,7 @@ import { $, state, status, downloadBlob } from "./core.js";
 import { postJSON } from "./api.js";
 import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs, updateGyroidAvail } from "./config.js";
 import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView, updateWfControls } from "./viewer3d.js";
-import { initRamp, setInterp } from "./ramp.js";
+import { createRamp, ramp } from "./ramp.js";
 
 // ── Presets ──────────────────────────────────────────────
 const svg = (inner) =>
@@ -307,14 +307,44 @@ function wire() {
   $("gyroid-on").addEventListener("change", () => { $("gyroid-params").hidden = !$("gyroid-on").checked; });
 
   // structure→core gradient: the draggable ramp editor + linear/step toggle
-  initRamp($("ramp-editor"), $("ramp-stops"), () => { updateGyroidAvail(); refreshConfigJson(); schedulePreview(); scheduleView3D(); });
+  const gradeCb = () => { updateGyroidAvail(); refreshConfigJson(); schedulePreview(); scheduleView3D(); };
+  createRamp("grade", $("ramp-editor"), $("ramp-stops"), gradeCb);
   $("grade-on").addEventListener("change", () => { $("grade-params").hidden = !$("grade-on").checked; });
   document.querySelectorAll("#grade-interp button").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#grade-interp button").forEach((b) => b.classList.toggle("active", b === btn));
-      setInterp(btn.dataset.interp); // triggers the ramp onChange → rebuild
+      ramp("grade").setInterp(btn.dataset.interp); // triggers the ramp onChange → rebuild
     });
   });
+
+  // base gradient: its own ramp editor + radial/linear mode + x/y/z axis + interp
+  const gradCb = () => { refreshConfigJson(); schedulePreview(); scheduleView3D(); };
+  createRamp("gradient", $("grad-ramp-editor"), $("grad-ramp-stops"), gradCb);
+  const syncGradLabels = () => {
+    const linear = document.querySelector("#grad-mode button.active")?.dataset.gmode === "linear";
+    $("grad-axis-wrap").hidden = !linear;
+    $("grad-ax-lo").textContent = linear ? "start" : "centre";
+    $("grad-ax-hi").textContent = linear ? "end" : "edge";
+  };
+  document.querySelectorAll("#grad-mode button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#grad-mode button").forEach((b) => b.classList.toggle("active", b === btn));
+      syncGradLabels(); gradCb();
+    });
+  });
+  document.querySelectorAll("#grad-axis button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#grad-axis button").forEach((b) => b.classList.toggle("active", b === btn));
+      gradCb();
+    });
+  });
+  document.querySelectorAll("#grad-interp button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#grad-interp button").forEach((b) => b.classList.toggle("active", b === btn));
+      ramp("gradient").setInterp(btn.dataset.interp);
+    });
+  });
+  syncGradLabels();
 
   // viewer tabs (2D layers / 3D model)
   document.querySelectorAll(".viewer-tabs button").forEach((btn) => {

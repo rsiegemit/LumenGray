@@ -101,14 +101,31 @@
         </div>
 
         <div class="mode-panel" data-panel="gradient" hidden>
-          <p class="hint">Edge-feather: dark at walls/holes, bright in the core.</p>
-          <label class="slider" title="Exposure right at walls and holes (the edge). Lower = softer edge.">Min (edge) <output id="o-gmin">40</output>
-            <input type="range" id="g-min" min="0" max="255" value="40" />
-          </label>
-          <label class="slider" title="Exposure deep inside the part (the core).">Max (core) <output id="o-gmax">255</output>
-            <input type="range" id="g-max" min="0" max="255" value="255" />
-          </label>
-          <label title="Distance over which exposure ramps from edge to core, in mm.">Falloff (mm)<input type="number" id="g-falloff" value="0.35" min="0.01" step="0.05" /></label>
+          <p class="hint">Fill exposure by position, designed on the ramp graph.</p>
+          <label class="seg-label">Shape</label>
+          <div class="segmented small" id="grad-mode" title="Radial = ramp from the part's centre outward. Linear = ramp along one axis, end to end.">
+            <button data-gmode="radial" class="active" title="0 at the centre → 1 at the farthest point.">Radial</button>
+            <button data-gmode="linear" title="0 at one end → 1 at the other, along the chosen axis.">Linear</button>
+          </div>
+          <div id="grad-axis-wrap" hidden>
+            <label class="seg-label">Direction</label>
+            <div class="segmented small" id="grad-axis" title="Which axis the linear ramp runs along.">
+              <button data-gaxis="x" class="active" title="Left → right.">X</button>
+              <button data-gaxis="y" title="Top → bottom.">Y</button>
+              <button data-gaxis="z" title="Bottom → top of the stack.">Z</button>
+            </div>
+          </div>
+          <div class="segmented small" id="grad-interp" title="Interpolation between ramp points: smooth (Linear) or stepped (Step / piecewise).">
+            <button data-interp="linear" class="active" title="Smooth ramp through every grey.">Linear</button>
+            <button data-interp="step" title="Hold each level until the next point (piecewise).">Step</button>
+          </div>
+          <div class="ramp-wrap" title="Fill ramp: left = start of the field (centre / one end), right = far end. Drag points · click to add · double-click to remove.">
+            <span class="ramp-ax" id="grad-ax-lo">centre</span>
+            <div id="grad-ramp-editor"></div>
+            <span class="ramp-ax" id="grad-ax-hi">edge</span>
+          </div>
+          <p class="hint">Drag on the curve, or edit points below.</p>
+          <div id="grad-ramp-stops" class="ramp-stops"></div>
         </div>
 
         <div class="mode-panel" data-panel="cubic" hidden>

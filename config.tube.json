@@ -11,10 +11,9 @@
   "grayscale": {
     "default_solid_value": 255,
     "gradient": {
-      "type": "edge_feather",
-      "min": 40,
-      "max": 255,
-      "falloff_mm": 1.5
+      "mode": "radial",
+      "stops": [[0.0, 255], [1.0, 40]],
+      "interp": "linear"
     }
   }
 }

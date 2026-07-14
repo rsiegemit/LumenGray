@@ -125,7 +125,7 @@ def stack_basename(config: Config, stem: str) -> str:
             parts.append(f"core{t.core_px}")
     elif config.gradient is not None:
         g = config.gradient
-        parts.append(f"gradient-{g.min}-{g.max}-f{g.falloff_mm:g}")
+        parts.append(f"gradient-{g.mode}" + (f"-{g.axis}" if g.mode == "linear" else ""))
     else:
         parts.append(f"uniform-v{config.default_solid_value}")
     if config.grade is not None:
@@ -296,7 +296,7 @@ def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
     elif config.tessellation is not None:
         layer = tessellation_layer(solid, index, total_layers, config.tessellation)
     else:
-        layer = overlay_regions(base_layer(solid, config.gradient, config.default_solid_value, pixel_mm), solid, index, regions)
+        layer = overlay_regions(base_layer(solid, config.gradient, config.default_solid_value, index, total_layers), solid, index, regions)
     if config.grade is not None:  # structure->core gradient (tessellation cells only)
         if config.octet is not None:
             z = index - 1 - config.octet.cap_bottom_layers  # 0 at first interior layer

@@ -19,8 +19,9 @@ DEFAULT_VOXEL_HEIGHT_UM = 50.0  # Z (layer) voxel pitch; protocol offers 20 / 50
 SUPPORTED_VOXEL_HEIGHTS_UM = (20.0, 50.0, 100.0)
 SHAPE_TYPES = ("rect", "circle", "polygon")
 UNIT_TYPES = ("px", "mm")
-GRADIENT_TYPES = ("edge_feather",)
-DEFAULT_FALLOFF_MM = 0.35
+GRADIENT_MODES = ("radial", "linear")
+GRADIENT_AXES = ("x", "y", "z")
+DEFAULT_GRADIENT = {"mode": "radial", "axis": "x", "stops": [[0.0, 255], [1.0, 0]], "interp": "linear"}
 
 # Cubic-tessellation defaults (everything in voxel counts).
 DEFAULT_TESSELLATION = {
@@ -102,10 +103,15 @@ class Region:
 
 @dataclass(frozen=True)
 class Gradient:
-    type: str  # "edge_feather"
-    min: int  # gray at the edge (distance 0)
-    max: int  # gray once distance >= falloff_mm into the solid
-    falloff_mm: float  # ramp distance from min to max
+    """Geometry-driven base fill via a designable ramp. ``mode`` = "radial" (0 at the
+    part's centre → 1 at its farthest point) or "linear" along ``axis`` (x/y/z, 0 at
+    one end → 1 at the other). The normalized field maps through the (pos, value)
+    stops, ``linear`` or ``step`` between them — same ramp graph as the grade."""
+
+    mode: str  # "radial" | "linear"
+    axis: str  # linear direction: "x" | "y" | "z"
+    stops: tuple  # ascending (pos in [0,1], value in [0,255]) control points
+    interp: str  # "linear" | "step"
 
 
 @dataclass(frozen=True)
@@ -340,22 +346,41 @@ def _validate_rotation(rotation) -> tuple:
     return tuple(float(value) for value in rotation)
 
 
+def _parse_ramp(raw_stops, interp, label) -> tuple:
+    """Validate a ramp graph — interp + a list of >=2 [pos in 0..1, value] stops.
+    Shared by the base gradient and the structure->core grade."""
+    if interp not in ("linear", "step"):
+        raise ConfigError(f"{label}.interp must be 'linear' or 'step'")
+    if not isinstance(raw_stops, (list, tuple)) or len(raw_stops) < 2:
+        raise ConfigError(f"{label}.stops must be a list of at least 2 [pos, value] pairs")
+    stops = []
+    for item in raw_stops:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise ConfigError(f"each {label} stop must be [pos, value]")
+        pos, value = item
+        if not isinstance(pos, (int, float)) or isinstance(pos, bool) or not (0.0 <= pos <= 1.0):
+            raise ConfigError(f"{label} stop pos must be a number in [0, 1]")
+        stops.append((float(pos), _validate_value(value, f"{label} stop value")))
+    stops.sort()
+    return tuple(stops)
+
+
 def _build_gradient(raw) -> Gradient | None:
     if raw is None:
         return None
     if not isinstance(raw, dict):
         raise ConfigError("'grayscale.gradient' must be an object")
-    gtype = raw.get("type", "edge_feather")
-    if gtype not in GRADIENT_TYPES:
-        raise ConfigError(f"grayscale.gradient.type must be one of {GRADIENT_TYPES}")
-    gmin = _validate_value(raw.get("min", 40), "grayscale.gradient.min")
-    gmax = _validate_value(raw.get("max", 255), "grayscale.gradient.max")
-    if gmin > gmax:
-        raise ConfigError("grayscale.gradient.min must be <= max")
-    falloff = _positive_number(
-        raw.get("falloff_mm", DEFAULT_FALLOFF_MM), "grayscale.gradient.falloff_mm"
-    )
-    return Gradient(gtype, gmin, gmax, falloff)
+    if raw.get("enabled") is False:
+        return None
+    mode = raw.get("mode", DEFAULT_GRADIENT["mode"])
+    if mode not in GRADIENT_MODES:
+        raise ConfigError(f"grayscale.gradient.mode must be one of {GRADIENT_MODES}")
+    axis = raw.get("axis", DEFAULT_GRADIENT["axis"])
+    if axis not in GRADIENT_AXES:
+        raise ConfigError(f"grayscale.gradient.axis must be one of {GRADIENT_AXES}")
+    interp = raw.get("interp", DEFAULT_GRADIENT["interp"])
+    stops = _parse_ramp(raw.get("stops", DEFAULT_GRADIENT["stops"]), interp, "grayscale.gradient")
+    return Gradient(mode=mode, axis=axis, stops=stops, interp=interp)
 
 
 def _build_tessellation(raw) -> CubicTessellation | None:
@@ -519,21 +544,8 @@ def _build_grade(raw) -> Grade | None:
     if raw.get("enabled") is False:
         return None
     interp = raw.get("interp", DEFAULT_GRADE["interp"])
-    if interp not in ("linear", "step"):
-        raise ConfigError("grayscale.grade.interp must be 'linear' or 'step'")
-    raw_stops = raw.get("stops", DEFAULT_GRADE["stops"])
-    if not isinstance(raw_stops, list) or len(raw_stops) < 2:
-        raise ConfigError("grayscale.grade.stops must be a list of at least 2 [pos, value] pairs")
-    stops = []
-    for item in raw_stops:
-        if not isinstance(item, (list, tuple)) or len(item) != 2:
-            raise ConfigError("each grayscale.grade stop must be [pos, value]")
-        pos, value = item
-        if not isinstance(pos, (int, float)) or isinstance(pos, bool) or not (0.0 <= pos <= 1.0):
-            raise ConfigError("grayscale.grade stop pos must be a number in [0, 1]")
-        stops.append((float(pos), _validate_value(value, "grayscale.grade stop value")))
-    stops.sort()
-    return Grade(stops=tuple(stops), interp=interp)
+    stops = _parse_ramp(raw.get("stops", DEFAULT_GRADE["stops"]), interp, "grayscale.grade")
+    return Grade(stops=stops, interp=interp)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

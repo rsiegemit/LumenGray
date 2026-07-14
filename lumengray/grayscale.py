@@ -9,29 +9,54 @@ from __future__ import annotations
 
 import numpy as np
 from PIL import Image, ImageDraw
-from scipy import ndimage
 
 from .config import Gradient
+from .grade import apply_ramp
 
 
 def base_layer(
     solid: np.ndarray,
     gradient: Gradient | None,
     default_solid_value: int,
-    pixel_mm: float,
+    layer_index: int = 1,
+    total_layers: int = 1,
 ) -> np.ndarray:
-    """Return the uint8 base fill for cured pixels (background stays 0)."""
+    """Return the uint8 base fill for cured pixels (background stays 0). With a
+    ``gradient``, map its normalized radial/linear field through the ramp graph."""
     if gradient is None:
         return np.where(solid, np.uint8(default_solid_value), 0).astype(np.uint8)
-    return _edge_feather(solid, gradient, pixel_mm)
+    field = _gradient_field(solid, gradient, layer_index, total_layers)
+    values = apply_ramp(field, gradient.stops, gradient.interp)
+    return np.where(solid, values, 0).astype(np.uint8)
 
 
-def _edge_feather(solid: np.ndarray, gradient: Gradient, pixel_mm: float) -> np.ndarray:
-    """Gray = min..max by distance to the nearest edge (outer wall or any hole)."""
-    distance_mm = ndimage.distance_transform_edt(solid) * pixel_mm
-    fraction = np.clip(distance_mm / gradient.falloff_mm, 0.0, 1.0)
-    values = gradient.min + (gradient.max - gradient.min) * fraction
-    return np.where(solid, np.round(values), 0).astype(np.uint8)
+def _gradient_field(solid: np.ndarray, gradient: Gradient, layer_index: int, total_layers: int) -> np.ndarray:
+    """Normalized [0,1] field: radial = 0 at the part's XY centre -> 1 at its farthest
+    pixel; linear x/y = across the footprint (0 at one end -> 1 at the other); linear
+    z = this layer's fraction up the stack. Normalized to the part so 0 and 1 land on
+    the actual extremes."""
+    height, width = solid.shape
+    if gradient.mode == "linear" and gradient.axis == "z":
+        frac = 0.0 if total_layers <= 1 else (layer_index - 1) / (total_layers - 1)
+        return np.full(solid.shape, frac, dtype=np.float64)
+    ys, xs = np.where(solid)
+    if xs.size == 0:
+        return np.zeros(solid.shape, dtype=np.float64)
+    if gradient.mode == "linear":
+        if gradient.axis == "x":
+            lo, hi = int(xs.min()), int(xs.max())
+            coord = np.broadcast_to(np.arange(width, dtype=np.float64), solid.shape)
+        else:  # "y"
+            lo, hi = int(ys.min()), int(ys.max())
+            coord = np.broadcast_to(np.arange(height, dtype=np.float64)[:, None], solid.shape)
+        return np.clip((coord - lo) / max(1.0, hi - lo), 0.0, 1.0)
+    # radial: distance from the footprint's bbox centre, normalized by the farthest solid pixel
+    cx = (int(xs.min()) + int(xs.max())) / 2.0
+    cy = (int(ys.min()) + int(ys.max())) / 2.0
+    gy, gx = np.mgrid[0:height, 0:width].astype(np.float64)
+    dist = np.hypot(gx - cx, gy - cy)
+    dmax = float(dist[solid].max()) or 1.0
+    return np.clip(dist / dmax, 0.0, 1.0)
 
 
 def overlay_regions(

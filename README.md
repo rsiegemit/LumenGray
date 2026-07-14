@@ -20,7 +20,8 @@ stack update live.
 - **Drag-and-drop any STL** — slices to a registered, fixed-canvas photostack.
 - **Five grayscale modes**
   - **Uniform** — flat exposure for every cured pixel.
-  - **Edge-feather gradient** — gray ramps from walls/holes into the core by distance.
+  - **Gradient** — exposure ramps by position via a designable graph: **radial**
+    (centre → edge) or **linear** along **x / y / z**, mapped through (pos, value) stops.
   - **Cubic tessellation** — white cube-edge support columns (grey faces/core), solid-white
     caps, a per-layer white outer-wall rim, and an optional black-void core per cell.
   - **Triangular prisms** — vertical strut columns + flat triangular frames (a triangular
@@ -136,7 +137,7 @@ lumengray model.stl --cubic-tessellation -o ./out --grey-value 128
 lumengray model.stl -c config.tessellation.json -o ./out
 ```
 
-Useful flags: `--voxel-height-um`, `--falloff-mm`, `--rotate-x/y/z`, `--prefix`,
+Useful flags: `--voxel-height-um`, `--rotate-x/y/z`, `--prefix`,
 `--preview` (writes a contact-sheet thumbnail grid).
 
 ## As a library
@@ -159,8 +160,11 @@ print(summary["layers"], "masks written")
   "grayscale": {
     "default_solid_value": 255,                 // uniform fill for cured pixels
 
-    "gradient": {                               // OR an edge-feather gradient
-      "type": "edge_feather", "min": 40, "max": 255, "falloff_mm": 0.35
+    "gradient": {                               // OR a designed radial/linear ramp
+      "mode": "radial",                         // "radial" (centre→edge) | "linear"
+      "axis": "x",                              // linear direction: "x" | "y" | "z"
+      "stops": [[0.0, 255], [1.0, 0]],          // ramp graph (pos 0..1, value 0..255)
+      "interp": "linear"                        // "linear" | "step"
     },
 
     "regions": [                                // OR painted shapes (rect/circle/polygon)

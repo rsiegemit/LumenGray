@@ -73,7 +73,7 @@ def main():
     sheet = Image.open(summary["preview"])
     assert sheet.width > 0 and sheet.height > 0, sheet.size
 
-    # --- edge-feather gradient: dark at edges, bright in the core ---
+    # --- radial gradient: bright at the centre (255), dark toward the edge (floor 40) ---
     grad_cfg = load_config(os.path.join(os.path.dirname(__file__), "config.tube.json"))
     out_grad = os.path.join(work, "grad")
     run(stl_path, out_grad, grad_cfg)
