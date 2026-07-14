@@ -35,6 +35,31 @@ def orient_mesh(mesh: trimesh.Trimesh, rotation_deg: tuple) -> trimesh.Trimesh:
     return mesh
 
 
+def array_mesh(mesh: trimesh.Trimesh, count: int, spacing_mm: float) -> trimesh.Trimesh:
+    """Replicate the (already-oriented) mesh into ``count`` identical copies laid out
+    on a centred, near-square grid with a ``spacing_mm`` gap between neighbouring
+    bounding boxes, so a whole batch prints on one photostack without the parts
+    fusing. Z is untouched (copies share the same height). ``count`` <= 1 is a no-op."""
+    if count <= 1:
+        return mesh
+    ext = mesh.bounds[1] - mesh.bounds[0]
+    dx, dy = float(ext[0]), float(ext[1])
+    cols = int(np.ceil(np.sqrt(count)))
+    rows = int(np.ceil(count / cols))
+    pitch_x, pitch_y = dx + spacing_mm, dy + spacing_mm
+    copies = []
+    for i in range(count):
+        r, c = divmod(i, cols)
+        # centre the grid on the original part's XY position (keeps center_xy sane
+        # and leaves a single copy where it was)
+        ox = (c - (cols - 1) / 2.0) * pitch_x
+        oy = (r - (rows - 1) / 2.0) * pitch_y
+        copy = mesh.copy()
+        copy.apply_translation([ox, oy, 0.0])
+        copies.append(copy)
+    return trimesh.util.concatenate(copies)
+
+
 def slice_mesh(mesh: trimesh.Trimesh, printer: Printer, center_xy: bool) -> list[np.ndarray]:
     """Return a list of boolean (height, width) masks, bottom layer first.
 

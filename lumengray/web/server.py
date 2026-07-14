@@ -34,7 +34,7 @@ from ..config import ConfigError, config_from_dict
 from ..octet import octet_struts
 from ..pipeline import render_layer, resolve_regions, run
 from ..preview import sample_indices
-from ..slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
+from ..slicer import array_mesh, canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
 from .presets import PRESETS, build_preset_mesh, get_preset, mode_of, resolve_params
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -191,7 +191,8 @@ def create_app() -> FastAPI:
 
     def _oriented(item: Upload, config) -> trimesh.Trimesh:
         # orient_mesh mutates in place, so always work on a copy of the cached mesh.
-        return orient_mesh(item.mesh.copy(), config.rotation_deg)
+        mesh = orient_mesh(item.mesh.copy(), config.rotation_deg)
+        return array_mesh(mesh, config.array_count, config.array_spacing_mm)
 
     def _register(mesh: trimesh.Trimesh, name: str, meta: dict) -> dict:
         upload_id = uuid.uuid4().hex

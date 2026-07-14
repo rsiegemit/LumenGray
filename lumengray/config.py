@@ -112,6 +112,8 @@ class Gradient:
     axis: str  # linear direction: "x" | "y" | "z"
     stops: tuple  # ascending (pos in [0,1], value in [0,255]) control points
     interp: str  # "linear" | "step"
+    rim_px: int = 0  # solid outer-wall rim: pixels within this of the outer wall (L-inf); 0 = no rim
+    rim_value: int = 255  # exposure of the rim wall (default white = full structure)
 
 
 @dataclass(frozen=True)
@@ -205,6 +207,8 @@ class Config:
     gradient: Gradient | None  # geometry-driven base fill; regions overlay on top
     center_xy: bool
     rotation_deg: tuple  # (x, y, z) degrees applied before slicing
+    array_count: int  # replicate the part into this many copies on the build plate (1 = single)
+    array_spacing_mm: float  # gap (mm) left between neighbouring copies so they don't fuse
     regions: tuple
     tessellation: CubicTessellation | None  # hollow-cube infill; overrides gradient+regions
     triangulation: TriangularTessellation | None  # triangular strut infill; overrides the above
@@ -221,6 +225,8 @@ def default_config() -> Config:
         gradient=None,
         center_xy=True,
         rotation_deg=(0.0, 0.0, 0.0),
+        array_count=1,
+        array_spacing_mm=2.0,
         regions=(),
         tessellation=None,
         triangulation=None,
@@ -303,7 +309,12 @@ def config_to_dict(config: Config) -> dict:
             "voxel_length_um": config.printer.voxel_length_um,
             "voxel_height_um": config.printer.voxel_height_um,
         },
-        "model": {"center_xy": config.center_xy, "rotation_deg": list(config.rotation_deg)},
+        "model": {
+            "center_xy": config.center_xy,
+            "rotation_deg": list(config.rotation_deg),
+            "array_count": config.array_count,
+            "array_spacing_mm": config.array_spacing_mm,
+        },
         "grayscale": grayscale,
     }
 
@@ -331,8 +342,15 @@ def _build_config(raw: dict) -> Config:
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
+    array_count = model.get("array_count", base.array_count)
+    if not isinstance(array_count, int) or isinstance(array_count, bool) or array_count < 1:
+        raise ConfigError("model.array_count must be an integer >= 1")
+    array_spacing = model.get("array_spacing_mm", base.array_spacing_mm)
+    if not isinstance(array_spacing, (int, float)) or isinstance(array_spacing, bool) or array_spacing < 0:
+        raise ConfigError("model.array_spacing_mm must be a number >= 0")
     return Config(
-        printer, default_solid_value, gradient, center_xy, rotation, regions, tessellation, triangulation, octet, gyroid, grade
+        printer, default_solid_value, gradient, center_xy, rotation, array_count, float(array_spacing),
+        regions, tessellation, triangulation, octet, gyroid, grade
     )
 
 
@@ -380,7 +398,11 @@ def _build_gradient(raw) -> Gradient | None:
         raise ConfigError(f"grayscale.gradient.axis must be one of {GRADIENT_AXES}")
     interp = raw.get("interp", DEFAULT_GRADIENT["interp"])
     stops = _parse_ramp(raw.get("stops", DEFAULT_GRADIENT["stops"]), interp, "grayscale.gradient")
-    return Gradient(mode=mode, axis=axis, stops=stops, interp=interp)
+    rim_px = raw.get("rim_px", 0)
+    if not isinstance(rim_px, int) or isinstance(rim_px, bool) or rim_px < 0:
+        raise ConfigError("grayscale.gradient.rim_px must be an integer >= 0")
+    rim_value = _validate_value(raw.get("rim_value", 255), "grayscale.gradient.rim_value")
+    return Gradient(mode=mode, axis=axis, stops=stops, interp=interp, rim_px=rim_px, rim_value=rim_value)
 
 
 def _build_tessellation(raw) -> CubicTessellation | None:

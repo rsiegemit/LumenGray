@@ -59,6 +59,20 @@
           <div><dt>Triangles</dt><dd id="m-tris">—</dd></div>
           <div><dt>Watertight</dt><dd id="m-water">—</dd></div>
         </dl>
+        <div class="grid2" style="margin-top:.6rem">
+          <label title="Print this many identical copies of the part in one photostack (a centred, near-square grid). Each copy gets the same grayscale pattern.">Copies
+            <select id="array-count">
+              <option value="1">1 (single)</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="9">9</option>
+            </select>
+          </label>
+          <label title="Gap left between neighbouring copies, in mm, so they don't fuse or leak into each other during the print.">Spacing (mm)<input type="number" id="array-spacing" value="2" min="0" step="0.5" /></label>
+        </div>
       </section>
 
       <section class="card">
@@ -126,6 +140,10 @@
           </div>
           <p class="hint">Drag on the curve, or edit points below.</p>
           <div id="grad-ramp-stops" class="ramp-stops"></div>
+          <div class="grid2">
+            <label title="Solid outer-wall rim: pixels within this many of the part's outer wall stay solid, containing the graded interior. 0 = no rim.">Rim (px)<input type="number" id="grad-rim" value="0" min="0" step="1" /></label>
+            <label title="Exposure value of the rim wall (255 = white / full structure).">Rim value<input type="range" id="grad-rim-val" min="0" max="255" step="1" value="255" /><output id="o-gradrim">255</output></label>
+          </div>
         </div>
 
         <div class="mode-panel" data-panel="cubic" hidden>

@@ -16,7 +16,7 @@ MANIFEST_FILENAME = "manifest.json"
 from .geometry import shape_to_pixels
 from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
-from .slicer import canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
+from .slicer import array_mesh, canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
 from .grade import grade_layer, distance_depth
 from .octet import octet_layer, octet_core_depth
 from .tessellation import tessellation_layer
@@ -43,6 +43,7 @@ def run(
     """Slice, modulate, and write the stack. Returns a summary dict."""
     mesh = load_mesh(stl_path)
     mesh = orient_mesh(mesh, config.rotation_deg)
+    mesh = array_mesh(mesh, config.array_count, config.array_spacing_mm)
     total = count_layers(mesh, config.printer)
     if total == 0:
         raise ValueError("No layers produced; check layer height vs model Z extent")

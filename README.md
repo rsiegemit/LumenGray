@@ -40,7 +40,7 @@ server and opens the studio in your browser.
 - **Uniform** — one exposure for every cured pixel.
 - **Gradient** — a positional ramp designed on a graph: **radial** (centre → edge) or
   **linear** along **X / Y / Z**, mapped through `(position, value)` stops with **Smooth** or
-  **Step** interpolation.
+  **Step** interpolation, plus an optional solid **rim** wall around the graded interior.
 - **Cubic / Triangular / Octet** — strut-lattice infills: white support struts, grey
   faces/core, solid-white caps, a white outer-wall rim, and an optional black void core per
   cell. Cubic uses a square grid, triangular a 60° grid (columns + flat frames), and **octet**
@@ -61,8 +61,13 @@ server and opens the studio in your browser.
 Structure / Diffusion / Void), and **Element** (one unit cell). Two **Cutaway** sliders —
 **Vertical** (up/down, Z) and **Horizontal** (side to side, X) — slice into any view.
 
+**Batch** — print **N identical copies** on one photostack, auto-arranged on a centred grid
+with a parametric mm gap so neighbours don't fuse. Each copy renders identically (every part
+gets its own gradient normalization).
+
 **Reproducible** — every export ships a `manifest.json` (source model + every parameter) and a
-parameter-encoded filename; a whole run is described by one JSON config.
+parameter-encoded filename; a whole run is described by one JSON config. Drop that
+`manifest.json` back onto the studio to restore the whole session.
 
 ![3D model view](docs/screenshot-3d.png)
 
@@ -113,7 +118,8 @@ are optional.
 {
   // voxel_width_um/voxel_length_um = XY pixel pitch (µm); voxel_height_um = Z layer (20/50/100)
   "printer": { "resolution": [1920, 1080], "voxel_width_um": 35, "voxel_length_um": 35, "voxel_height_um": 50 },
-  "model":   { "center_xy": true, "rotation_deg": [0, 0, 0] },
+  "model":   { "center_xy": true, "rotation_deg": [0, 0, 0],
+               "array_count": 1, "array_spacing_mm": 2 },   // batch N identical copies on one plate, mm apart
 
   "grayscale": {
     // --- pick ONE base mode ---
@@ -123,7 +129,9 @@ are optional.
       "mode": "radial",                          // "radial" (centre→edge) | "linear"
       "axis": "x",                               // linear direction: "x" | "y" | "z"
       "stops": [[0.0, 255], [1.0, 0]],           // ramp graph: (position 0..1, value 0..255)
-      "interp": "linear"                         // "linear" (Smooth) | "step"
+      "interp": "linear",                        // "linear" (Smooth) | "step"
+      "rim_px": 0,                               // optional solid outer wall this many px thick (0 = none)
+      "rim_value": 255                           // rim exposure (255 = white / full structure)
     },
 
     "cubic_tessellation": {                      // OR the hollow-cube strut infill

@@ -93,6 +93,8 @@ export function buildConfig() {
     model: {
       center_xy: $("center-xy").checked,
       rotation_deg: [num("rot-x", 0), num("rot-y", 0), num("rot-z", 0)],
+      array_count: Math.max(1, int("array-count", 1)),
+      array_spacing_mm: Math.max(0, num("array-spacing", 2)),
     },
     grayscale: {},
   };
@@ -106,6 +108,8 @@ export function buildConfig() {
       axis: document.querySelector("#grad-axis button.active")?.dataset.gaxis || "x",
       stops: r.stops,
       interp: r.interp,
+      rim_px: Math.max(0, int("grad-rim", 0)),
+      rim_value: int("grad-rim-val", 255),
     };
   } else if (mode === "cubic") {
     config.grayscale.cubic_tessellation = {
@@ -168,6 +172,8 @@ export function applyConfig(c) {
   if (p.voxel_height_um != null) setVal("voxel-height-um", p.voxel_height_um);
   if (typeof m.center_xy === "boolean") $("center-xy").checked = m.center_xy;
   if (m.rotation_deg) { setVal("rot-x", m.rotation_deg[0]); setVal("rot-y", m.rotation_deg[1]); setVal("rot-z", m.rotation_deg[2]); }
+  if (m.array_count != null) setVal("array-count", m.array_count);
+  if (m.array_spacing_mm != null) setVal("array-spacing", m.array_spacing_mm);
   if (g.cubic_tessellation) {
     const t = g.cubic_tessellation;
     setVal("t-cap-b", t.cap_bottom_layers); setVal("t-cap-t", t.cap_top_layers);
@@ -192,6 +198,8 @@ export function applyConfig(c) {
     document.querySelectorAll("#grad-axis button").forEach((b) => b.classList.toggle("active", b.dataset.gaxis === (gd.axis || "x")));
     document.querySelectorAll("#grad-interp button").forEach((b) => b.classList.toggle("active", b.dataset.interp === (gd.interp || "linear")));
     if (gd.stops) ramp("gradient")?.setRamp({ stops: gd.stops, interp: gd.interp });
+    if (gd.rim_px != null) setVal("grad-rim", gd.rim_px);
+    if (gd.rim_value != null) setVal("grad-rim-val", gd.rim_value);
     $("grad-axis-wrap").hidden = gmode !== "linear";
     $("grad-ax-lo").textContent = gmode === "linear" ? "start" : "centre";
     $("grad-ax-hi").textContent = gmode === "linear" ? "end" : "edge";
@@ -225,6 +233,6 @@ export function applyConfig(c) {
 
 // keep slider <output> labels in sync with their inputs
 export function updateOutputs() {
-  const pairs = [["solid-value", "o-solid"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"]];
+  const pairs = [["solid-value", "o-solid"], ["t-grey", "o-grey"], ["t-white", "o-white"], ["tr-grey", "o-trgrey"], ["tr-white", "o-trwhite"], ["oc-grey", "o-ocgrey"], ["oc-white", "o-ocwhite"], ["grad-rim-val", "o-gradrim"]];
   pairs.forEach(([inp, out]) => { const o = $(out); if (o) o.textContent = $(inp).value; });
 }
