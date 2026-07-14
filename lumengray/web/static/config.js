@@ -66,6 +66,18 @@ export function updateGyroidAvail() {
   $("gyroid-hint").textContent = on ? "— gyroid lumen network" : "— needs a void core or gradient-to-black";
 }
 
+// The structure→core grade only affects tessellation cells (it grades the fill
+// between white struts); uniform/gradient modes have no struts, so disable it there.
+export function updateGradeAvail() {
+  const m = currentMode();
+  const ok = m === "cubic" || m === "triangular" || m === "octet";
+  const cb = $("grade-on");
+  cb.disabled = !ok;
+  if (!ok) { cb.checked = false; $("grade-params").hidden = true; }
+  $("grade-block").classList.toggle("disabled", !ok);
+  $("grade-hint").textContent = ok ? "— struts → core" : "— needs a tessellation mode";
+}
+
 export function buildConfig() {
   const config = {
     printer: {
@@ -202,6 +214,7 @@ export function applyConfig(c) {
     document.querySelectorAll("#grade-interp button").forEach((b) => b.classList.toggle("active", b.dataset.interp === (gr.interp || "linear")));
   }
   $("grade-params").hidden = !gr;
+  updateGradeAvail();
   updateOutputs();
   refreshConfigJson();
 }

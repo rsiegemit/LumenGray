@@ -3,7 +3,7 @@
 
 import { $, state, status, downloadBlob } from "./core.js";
 import { postJSON } from "./api.js";
-import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs, updateGyroidAvail } from "./config.js";
+import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs, updateGyroidAvail, updateGradeAvail } from "./config.js";
 import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView, updateWfControls } from "./viewer3d.js";
 import { createRamp, ramp } from "./ramp.js";
 
@@ -294,6 +294,7 @@ function wire() {
   document.querySelectorAll("#mode-seg button").forEach((btn) => {
     btn.addEventListener("click", () => {
       selectMode(btn.dataset.mode);
+      updateGradeAvail();   // grade only applies to tessellation modes
       updateGyroidAvail();  // a mode without cores disables Connect voids
       schedulePreview();
       // a mode change can switch the wireframe between strut-cage and band view
@@ -383,6 +384,7 @@ function wire() {
   $("download-config").addEventListener("click", () => downloadBlob(new Blob([$("config-json").textContent], { type: "application/json" }), "lumengray.config.json"));
 
   updateOutputs();
+  updateGradeAvail();
   updateGyroidAvail();
   refreshConfigJson();
   loadPresets();
