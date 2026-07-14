@@ -61,6 +61,22 @@ jobs:
           name: LumenGray-macos
           path: dist/LumenGray-macos.zip
 
+      # --- macOS: drag-to-install .dmg (the .app + an Applications alias) ---
+      - name: Package macOS .dmg
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dmg_stage
+          cp -R dist/LumenGray.app dmg_stage/
+          ln -s /Applications dmg_stage/Applications
+          hdiutil create -volname "LumenGray" -srcfolder dmg_stage -ov -format UDZO dist/LumenGray-macos.dmg
+
+      - name: Upload macOS dmg
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumenGray-macos-dmg
+          path: dist/LumenGray-macos.dmg
+
       # --- Windows: zip the one-folder build containing LumenGray.exe ---
       - name: Package Windows build
         if: runner.os == 'Windows'
@@ -97,7 +113,9 @@ jobs:
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/LumenGray-macos.zip
+          files: |
+            dist/LumenGray-macos.dmg
+            dist/LumenGray-macos.zip
 
       - name: Attach to Release (Windows)
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')

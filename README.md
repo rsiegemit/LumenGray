@@ -61,7 +61,13 @@ stack update live.
 
 **[⬇ Download LumenGray-Setup.exe](https://github.com/rsiegemit/LumenGray/releases/latest/download/LumenGray-Setup.exe)** — run the installer (no admin needed), then launch **LumenGray** from the Start Menu. It starts a local server and opens the studio in your browser automatically; no Python required.
 
-> First launch may show a Windows SmartScreen warning (the installer isn't code-signed) — click **More info → Run anyway**. Prefer no installer? Grab the portable **`LumenGray-windows.zip`** from the [latest release](https://github.com/rsiegemit/LumenGray/releases/latest), unzip, and run `LumenGray.exe`. A macOS `.app` is on the same release.
+> First launch may show a Windows SmartScreen warning (the installer isn't code-signed) — click **More info → Run anyway**. Prefer no installer? Grab the portable **`LumenGray-windows.zip`** from the [latest release](https://github.com/rsiegemit/LumenGray/releases/latest), unzip, and run `LumenGray.exe`.
+
+## Download for macOS
+
+**[⬇ Download LumenGray-macos.dmg](https://github.com/rsiegemit/LumenGray/releases/latest/download/LumenGray-macos.dmg)** — open it and drag **LumenGray** into the **Applications** folder shown, then launch it. It starts a local server and opens the studio in your browser; no Python required.
+
+> Because it isn't code-signed, the **first** launch needs **right-click (or Control-click) → Open → Open** (a normal double-click will be blocked). After that, open it normally. (A `LumenGray-macos.zip` of the raw `.app` is on the same release if you prefer.)
 
 ## Install (from source)
 

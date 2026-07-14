@@ -8,10 +8,14 @@ No Python, no terminal, no setup.
 
 ## Mac
 
-### 1. Download
+### 1. Download and install
 
-Download **`LumenGray-macos.zip`** and double-click it to unzip. You'll get an
-app called **LumenGray**. (Drag it into your **Applications** folder if you like.)
+Download **`LumenGray-macos.dmg`** from the
+[latest release](https://github.com/rsiegemit/LumenGray/releases/latest) and
+double-click it. A window opens showing the **LumenGray** app and an
+**Applications** folder — drag **LumenGray** onto **Applications** to install it.
+(Prefer no installer? A **`LumenGray-macos.zip`** of the raw app is on the same
+release; double-click to unzip and use the app directly.)
 
 ### 2. Open it the first time (important)
 
