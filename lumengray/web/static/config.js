@@ -63,7 +63,7 @@ export function updateGyroidAvail() {
   if (!on) cb.checked = false;
   $("gyroid-params").hidden = !cb.checked;
   $("gyroid-block").classList.toggle("disabled", !on);
-  $("gyroid-hint").textContent = on ? "— gyroid lumen network" : "— needs a void core or gradient-to-black";
+  $("gyroid-hint").textContent = on ? "— void-matching network" : "— needs a void core or gradient-to-black";
 }
 
 // The structure→core grade only affects tessellation cells (it grades the fill
