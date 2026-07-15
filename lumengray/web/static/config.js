@@ -110,6 +110,7 @@ export function buildConfig() {
       interp: r.interp,
       rim_px: Math.max(0, int("grad-rim", 0)),
       rim_value: int("grad-rim-val", 255),
+      band_px: Math.max(0, int("grad-band", 0)),
     };
   } else if (mode === "cubic") {
     config.grayscale.cubic_tessellation = {
@@ -152,7 +153,7 @@ export function buildConfig() {
     config.grayscale.connect_voids = { cell_mm: num("gy-cell", 0.8), channel_px: Math.max(1, int("gy-channel", 1)), skin_px: int("gy-skin", 3), route: $("gy-route")?.value || "geodesic", drain: !!$("gy-drain")?.checked, void_max: Math.min(254, Math.max(0, int("gy-voidmax", 0))) };
   }
   if ($("grade-on")?.checked) {  // structure→core exposure gradient (tessellation cells)
-    config.grayscale.grade = gradeRamp();
+    config.grayscale.grade = { ...gradeRamp(), band_px: Math.max(0, int("grade-band", 0)) };
   }
   return config;
 }
@@ -200,6 +201,7 @@ export function applyConfig(c) {
     if (gd.stops) ramp("gradient")?.setRamp({ stops: gd.stops, interp: gd.interp });
     if (gd.rim_px != null) setVal("grad-rim", gd.rim_px);
     if (gd.rim_value != null) setVal("grad-rim-val", gd.rim_value);
+    if (gd.band_px != null) setVal("grad-band", gd.band_px);
     $("grad-axis-wrap").hidden = gmode !== "linear";
     $("grad-ax-lo").textContent = gmode === "linear" ? "start" : "centre";
     $("grad-ax-hi").textContent = gmode === "linear" ? "end" : "edge";
@@ -223,6 +225,7 @@ export function applyConfig(c) {
   $("grade-on").checked = !!gr;
   if (gr) {
     ramp("grade")?.setRamp(gr);
+    if (gr.band_px != null) setVal("grade-band", gr.band_px);
     document.querySelectorAll("#grade-interp button").forEach((b) => b.classList.toggle("active", b.dataset.interp === (gr.interp || "linear")));
   }
   $("grade-params").hidden = !gr;

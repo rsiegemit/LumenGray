@@ -28,7 +28,7 @@ def base_layer(
     if gradient is None:
         return np.where(solid, np.uint8(default_solid_value), 0).astype(np.uint8)
     field = _gradient_field(solid, gradient, layer_index, total_layers)
-    values = apply_ramp(field, gradient.stops, gradient.interp)
+    values = apply_ramp(field, gradient.stops, gradient.interp, gradient.band_px)
     layer = np.where(solid, values, 0).astype(np.uint8)
     if gradient.rim_px > 0:  # solid outer-wall rim containing the graded interior
         rim = _boundary_mask(solid, gradient.rim_px)

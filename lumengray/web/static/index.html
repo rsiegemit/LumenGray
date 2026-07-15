@@ -143,6 +143,7 @@
           <div class="grid2">
             <label title="Solid outer-wall rim: pixels within this many of the part's outer wall stay solid, containing the graded interior. 0 = no rim.">Rim (px)<input type="number" id="grad-rim" value="0" min="0" step="1" /></label>
             <label title="Exposure value of the rim wall (255 = white / full structure).">Rim value<input type="range" id="grad-rim-val" min="0" max="255" step="1" value="255" /><output id="o-gradrim">255</output></label>
+            <label title="Step interp only: lay a solid white crosslink wall this many voxels thick along every step boundary (welds adjacent bands together). 0 = none, 1 = a single voxel.">Step seam (px)<input type="number" id="grad-band" value="0" min="0" step="1" /></label>
           </div>
         </div>
 
@@ -232,6 +233,7 @@
             </div>
             <p class="hint">Drag on the curve, or edit points below.</p>
             <div id="ramp-stops" class="ramp-stops"></div>
+            <label title="Step interp only: lay a solid white crosslink wall this many voxels thick along every step boundary (welds adjacent bands together). 0 = none, 1 = a single voxel.">Step seam (px)<input type="number" id="grade-band" value="0" min="0" step="1" /></label>
           </div>
         </div>
       </section>

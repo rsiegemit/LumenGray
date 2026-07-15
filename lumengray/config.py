@@ -114,6 +114,7 @@ class Gradient:
     interp: str  # "linear" | "step"
     rim_px: int = 0  # solid outer-wall rim: pixels within this of the outer wall (L-inf); 0 = no rim
     rim_value: int = 255  # exposure of the rim wall (default white = full structure)
+    band_px: int = 0  # step interp: white crosslink wall this many voxels thick at each step seam (0 = none)
 
 
 @dataclass(frozen=True)
@@ -198,6 +199,7 @@ class Grade:
 
     stops: tuple  # ascending (pos in [0,1], value in [0,255]) control points
     interp: str  # "linear" | "step"
+    band_px: int = 0  # step interp: white crosslink wall this many voxels thick at each step seam (0 = none)
 
 
 @dataclass(frozen=True)
@@ -402,7 +404,8 @@ def _build_gradient(raw) -> Gradient | None:
     if not isinstance(rim_px, int) or isinstance(rim_px, bool) or rim_px < 0:
         raise ConfigError("grayscale.gradient.rim_px must be an integer >= 0")
     rim_value = _validate_value(raw.get("rim_value", 255), "grayscale.gradient.rim_value")
-    return Gradient(mode=mode, axis=axis, stops=stops, interp=interp, rim_px=rim_px, rim_value=rim_value)
+    band_px = _non_negative_int(raw.get("band_px", 0), "grayscale.gradient.band_px")
+    return Gradient(mode=mode, axis=axis, stops=stops, interp=interp, rim_px=rim_px, rim_value=rim_value, band_px=band_px)
 
 
 def _build_tessellation(raw) -> CubicTessellation | None:
@@ -567,7 +570,8 @@ def _build_grade(raw) -> Grade | None:
         return None
     interp = raw.get("interp", DEFAULT_GRADE["interp"])
     stops = _parse_ramp(raw.get("stops", DEFAULT_GRADE["stops"]), interp, "grayscale.grade")
-    return Grade(stops=stops, interp=interp)
+    band_px = _non_negative_int(raw.get("band_px", 0), "grayscale.grade.band_px")
+    return Grade(stops=stops, interp=interp, band_px=band_px)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:
@@ -655,3 +659,9 @@ def _positive_number(value, label: str) -> float:
     if not isinstance(value, (int, float)) or value <= 0:
         raise ConfigError(f"{label} must be a positive number")
     return float(value)
+
+
+def _non_negative_int(value, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ConfigError(f"{label} must be an integer >= 0")
+    return value

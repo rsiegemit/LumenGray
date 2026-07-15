@@ -14,23 +14,40 @@ from scipy import ndimage
 from .config import Grade
 
 
-def apply_ramp(f: np.ndarray, stops, interp: str) -> np.ndarray:
+def apply_ramp(f: np.ndarray, stops, interp: str, band_px: int = 0) -> np.ndarray:
     """Map a normalized field ``f`` (0..1) to 8-bit exposure via (pos, value) stops —
     ``linear`` interpolates between them, ``step`` holds each stop's value until the
-    next. Shared by the base gradient and the structure->core grade."""
+    next. Shared by the base gradient and the structure->core grade.
+
+    ``band_px`` (``step`` only, and only for a 2-D field) lays a white crosslink wall
+    this many voxels thick along every step boundary — a fully-cured seam welding
+    adjacent bands together."""
     pos = np.array([s[0] for s in stops], dtype=np.float64)
     val = np.array([s[1] for s in stops], dtype=np.float64)
     if interp == "step":
         idx = np.clip(np.searchsorted(pos, f, side="right") - 1, 0, len(val) - 1)
-        out = val[idx]
+        out = val[idx].astype(np.float64)
+        if band_px > 0 and idx.ndim == 2:
+            out = np.where(_step_seam_mask(idx, band_px), 255.0, out)
     else:
         out = np.interp(f, pos, val)  # clamps to the end values outside [pos0, posN]
     return np.round(out).astype(np.uint8)
 
 
+def _step_seam_mask(idx: np.ndarray, band_px: int) -> np.ndarray:
+    """White-band mask at each step boundary: the 1-voxel line on the higher side of
+    every band transition (any direction), dilated to ``band_px`` voxels thick."""
+    line = np.zeros(idx.shape, dtype=bool)
+    line[1:, :] |= idx[1:, :] != idx[:-1, :]
+    line[:, 1:] |= idx[:, 1:] != idx[:, :-1]
+    if band_px > 1:
+        line = ndimage.binary_dilation(line, iterations=int(band_px) - 1)
+    return line
+
+
 def _profile(f: np.ndarray, grade: Grade) -> np.ndarray:
     """Structure->core ramp: normalized distance-from-structure ``f`` (0 struts -> 1 core)."""
-    return apply_ramp(f, grade.stops, grade.interp)
+    return apply_ramp(f, grade.stops, grade.interp, grade.band_px)
 
 
 def distance_depth(layer: np.ndarray, norm_px: float) -> np.ndarray | None:

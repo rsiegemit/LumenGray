@@ -40,7 +40,9 @@ server and opens the studio in your browser.
 - **Uniform** — one exposure for every cured pixel.
 - **Gradient** — a positional ramp designed on a graph: **radial** (centre → edge) or
   **linear** along **X / Y / Z**, mapped through `(position, value)` stops with **Smooth** or
-  **Step** interpolation, plus an optional solid **rim** wall around the graded interior.
+  **Step** interpolation, plus an optional solid **rim** wall around the graded interior and,
+  on **Step**, a white **crosslink seam** welding adjacent bands. (The structure→core grade
+  gets the same Step seam.)
 - **Cubic / Triangular / Octet** — strut-lattice infills: white support struts, grey
   faces/core, solid-white caps, a white outer-wall rim, and an optional black void core per
   cell. Cubic uses a square grid, triangular a 60° grid (columns + flat frames), and **octet**
@@ -131,7 +133,8 @@ are optional.
       "stops": [[0.0, 255], [1.0, 0]],           // ramp graph: (position 0..1, value 0..255)
       "interp": "linear",                        // "linear" (Smooth) | "step"
       "rim_px": 0,                               // optional solid outer wall this many px thick (0 = none)
-      "rim_value": 255                           // rim exposure (255 = white / full structure)
+      "rim_value": 255,                          // rim exposure (255 = white / full structure)
+      "band_px": 0                               // step only: white crosslink wall this many voxels thick at each step seam
     },
 
     "cubic_tessellation": {                      // OR the hollow-cube strut infill
@@ -165,7 +168,8 @@ are optional.
     // --- optional overlays (tessellation modes) ---
     "grade": {                                   // structure→core exposure ramp per cell
       "stops": [[0.0, 255], [1.0, 0]],           // (distance 0=struts..1=core, value)
-      "interp": "linear"                         // "linear" (Smooth) | "step"
+      "interp": "linear",                        // "linear" (Smooth) | "step"
+      "band_px": 0                               // step only: white crosslink wall this many voxels thick at each step seam
     },
 
     "connect_voids": {                           // link every void into one drainable network
