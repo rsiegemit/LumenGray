@@ -225,7 +225,7 @@ async function requestPreview() {
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const img = $("layer-img");
-    img.onload = () => { if (state.lastUrl) URL.revokeObjectURL(state.lastUrl); state.lastUrl = url; };
+    img.onload = () => { if (state.lastUrl) URL.revokeObjectURL(state.lastUrl); state.lastUrl = url; updateScaleBar(); };
     img.src = url;
     img.style.display = "block";
     $("layer-empty").hidden = true;
@@ -262,6 +262,54 @@ function applyZoom() {
   zoomState.y = Math.max(-maxY, Math.min(maxY, zoomState.y));
   img.style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.z})`;
   img.classList.toggle("zoomed", zoomState.z > 1);
+  updateScaleBar();
+}
+
+// Physical scale bar for the layer preview: on-screen pixels → mm via the XY voxel
+// size, accounting for how the full-res PNG is fit to the box and the current zoom.
+// Picks a "nice" 1/2/5×10ⁿ length near ~90 px. Reflects the SAME 35 µm pitch the
+// slicer assumes, so it's a direct sanity check on real-world dimensions.
+function updateScaleBar() {
+  const bar = $("scale-bar");
+  const img = $("layer-img");
+  if (!$("scale-on").checked || img.style.display === "none" || !img.naturalWidth) { bar.hidden = true; return; }
+  const rect = img.getBoundingClientRect();           // on-screen size, includes the zoom transform
+  const voxelMm = (buildConfig().printer.voxel_width_um || 35) / 1000;
+  const pxPerMm = (rect.width / img.naturalWidth) / voxelMm;
+  if (!isFinite(pxPerMm) || pxPerMm <= 0) { bar.hidden = true; return; }
+  const rawMm = 90 / pxPerMm;                          // mm that ~90 screen px represents
+  const pow = Math.pow(10, Math.floor(Math.log10(rawMm)));
+  const frac = rawMm / pow;
+  const niceMm = (frac < 1.5 ? 1 : frac < 3.5 ? 2 : frac < 7.5 ? 5 : 10) * pow;
+  bar.hidden = false;
+  $("scale-bar-label").textContent = niceMm >= 1 ? `${+niceMm.toFixed(2)} mm` : `${Math.round(niceMm * 1000)} µm`;
+  bar.querySelector(".scale-bar-line").style.width = (niceMm * pxPerMm) + "px";
+}
+
+// Drag the scale bar anywhere over the preview so it can be laid alongside a
+// feature to measure it. Position is clamped to the canvas box.
+function wireScaleDrag() {
+  const bar = $("scale-bar");
+  let drag = null;
+  bar.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const b = bar.getBoundingClientRect();
+    drag = { dx: e.clientX - b.left, dy: e.clientY - b.top };
+    bar.classList.add("dragging");
+    bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const wrap = bar.parentElement.getBoundingClientRect();
+    const left = Math.max(0, Math.min(wrap.width - bar.offsetWidth, e.clientX - drag.dx - wrap.left));
+    const top = Math.max(0, Math.min(wrap.height - bar.offsetHeight, e.clientY - drag.dy - wrap.top));
+    bar.style.left = left + "px";
+    bar.style.top = top + "px";
+    bar.style.bottom = "auto";
+  });
+  const end = () => { drag = null; bar.classList.remove("dragging"); };
+  bar.addEventListener("pointerup", end);
+  bar.addEventListener("pointercancel", end);
 }
 
 function setZoom(pct) {
@@ -403,6 +451,7 @@ function wire() {
       document.querySelectorAll(".view").forEach((v) => { v.hidden = v.dataset.view !== btn.dataset.view; });
       // returning to the 3D tab in a built view picks up any parameter changes
       if (btn.dataset.view === "model" && currentViewMode() !== "mesh" && state.id) buildView(currentViewMode());
+      if (btn.dataset.view === "layers") updateScaleBar();
     });
   });
 
@@ -420,6 +469,11 @@ function wire() {
   ["wf3d-tlow", "wf3d-thigh", "wf3d-lfrom", "wf3d-lto"].forEach((id) => $(id).addEventListener("change", refreshView));
   $("clip-slider").addEventListener("input", applyClip);
   $("clip-slider-z").addEventListener("input", applyClip);
+
+  // physical scale bar on the layer preview (toggle + drag to reposition)
+  $("scale-on").addEventListener("change", updateScaleBar);
+  window.addEventListener("resize", updateScaleBar);
+  wireScaleDrag();
 
   // 2D layer scrubber
   $("layer-slider").addEventListener("input", (e) => { state.index = parseInt(e.target.value, 10); syncSlider(); schedulePreview(); });

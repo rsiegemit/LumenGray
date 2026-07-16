@@ -265,6 +265,7 @@
             <img id="layer-img" alt="layer preview" />
             <div class="empty-state" id="layer-empty">Upload an STL to preview the photostack.</div>
             <div class="spinner" id="layer-spin" hidden></div>
+            <div class="scale-bar" id="scale-bar" hidden><span class="scale-bar-label" id="scale-bar-label">—</span><span class="scale-bar-line"></span></div>
           </div>
           <div class="scrubber">
             <button class="step" id="prev-layer" title="previous">◀</button>
@@ -276,6 +277,7 @@
             <span class="zoom-ico" title="zoom">🔍</span>
             <input type="range" id="zoom-slider" min="100" max="600" value="100" title="zoom" />
             <span class="layer-label" id="zoom-label">100%</span>
+            <label class="scale-toggle" title="Overlay a physical scale bar computed from the XY voxel size and the current zoom. Handy for sanity-checking real-world dimensions."><input type="checkbox" id="scale-on" /> Scale</label>
           </div>
         </div>
 
