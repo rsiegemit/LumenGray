@@ -278,7 +278,17 @@ def _void_connect_carve(layer, solid, layer_index, total_layers, config: Config)
         voids = (layer <= g.void_max) & solid
         if not voids.any():
             return layer
-        chan = connect_components_2d(voids, g.channel_px, g.route)
+        # Connect within each separate body so a batch of copies doesn't get channels
+        # bridging between parts — each copy is plumbed as its own standalone network.
+        labels, nlab = ndimage.label(solid)
+        if nlab <= 1:
+            chan = connect_components_2d(voids, g.channel_px, g.route)
+        else:
+            chan = np.zeros(solid.shape, dtype=bool)
+            for i in range(1, nlab + 1):
+                cv = voids & (labels == i)
+                if cv.any():
+                    chan |= connect_components_2d(cv, g.channel_px, g.route)
         interior = solid if (g.drain or g.skin_px <= 0) else ndimage.distance_transform_edt(solid) > g.skin_px
         return np.where(interior & (chan | (layer <= g.void_max)), np.uint8(0), layer)
     K, cx, cz, cap_b, cap_t = conn

@@ -106,21 +106,29 @@ def _boundary_mask(solid: np.ndarray, boundary_px: int) -> np.ndarray:
     The rim tracks the outer silhouette only: enclosed holes are filled and thin
     internal channels are bridged, so pixels next to a drilled channel stay grey
     (no boundary) while the model's outer skin still gets its white rim.
+
+    Computed PER connected part: each separate body (e.g. a batch of copies, which
+    the channel-bridging closing would otherwise fuse into one blob) gets its own
+    complete wall on every side, not just the array's outer perimeter.
     """
     if boundary_px <= 0:
         return np.zeros(solid.shape, dtype=bool)
     rim = np.zeros(solid.shape, dtype=bool)
-    ys, xs = np.where(solid)
-    if xs.size == 0:
+    labels, n = ndimage.label(solid)
+    if n == 0:
         return rim
-    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    for sl, comp_id in zip(ndimage.find_objects(labels), range(1, n + 1)):
+        comp = labels[sl] == comp_id  # this body alone (other bodies in the box are excluded)
+        rim[sl] |= _component_rim(comp, boundary_px)
+    return rim
 
+
+def _component_rim(comp: np.ndarray, boundary_px: int) -> np.ndarray:
+    """The outer-wall rim of ONE connected body (True = solid), within its own box."""
     pad = _CHANNEL_BRIDGE_PX + 2
-    sub = solid[y0:y1, x0:x1]
-    padded = np.pad(sub, pad)
+    padded = np.pad(comp, pad)
     # Outer silhouette: close thin channels, then fill any fully enclosed holes.
     outer = ndimage.binary_closing(padded, iterations=_CHANNEL_BRIDGE_PX, border_value=0)
     outer = ndimage.binary_fill_holes(outer)
     distance = ndimage.distance_transform_cdt(outer, metric="chessboard")[pad:-pad, pad:-pad]
-    rim[y0:y1, x0:x1] = sub & (distance <= boundary_px)
-    return rim
+    return comp & (distance <= boundary_px)
