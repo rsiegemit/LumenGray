@@ -30,6 +30,7 @@ from starlette.background import BackgroundTask
 from PIL import Image
 from pydantic import BaseModel
 
+from .. import calibration
 from ..config import ConfigError, config_from_dict
 from ..octet import octet_struts
 from ..pipeline import render_layer, resolve_regions, run
@@ -112,6 +113,13 @@ class NativeRequest(BaseModel):
 
 class ElementRequest(BaseModel):
     config: dict
+
+
+class CalibrationRequest(BaseModel):
+    config: dict           # supplies the printer (resolution + XY/Z voxel pitch)
+    spec: dict | None = None
+    index: int = 1
+    view: str = "reference"  # "reference" (labeled map) | "print" (gel-only layer)
 
 
 class CageRequest(BaseModel):
@@ -692,8 +700,11 @@ def create_app() -> FastAPI:
                 m = crop >= th; counts["white"] += int(m.sum()); picks.append(m)
             if "gray" in want:
                 m = (crop >= tl) & (crop < th); counts["gray"] += int(m.sum()); picks.append(m)
-            if "black" in want:  # lumen: void pixels inside the part silhouette (incl. open/drained channels)
-                foot = ndimage.binary_fill_holes(sld[r0:r1, c0:c1])
+            if "black" in want:  # lumen: dark voxels WITHIN the solid body (carved cores /
+                # channels / gradient-to-black). Use the RAW silhouette, not hole-filled —
+                # an open hole (e.g. a torus centre) is not part of the body, so it must
+                # not be counted as void.
+                foot = sld[r0:r1, c0:c1]
                 m = foot & (crop < tl); counts["black"] += int(m.sum()); picks.append(m)
             for m in picks:
                 yy, xx = np.where(m)
@@ -800,6 +811,112 @@ def create_app() -> FastAPI:
             "voxel_size_mm": [round(pixel_mm, 4), round(length_mm, 4), round(layer_mm, 4)],
             "count": len(fill),
         }
+
+    @app.post("/api/calibration/info")
+    def calibration_info(req: CalibrationRequest) -> dict:
+        config = _config(req.config)
+        spec = calibration.build_spec(req.spec or {}, config.printer)
+        return {
+            "total_layers": calibration.total_layers(spec),
+            "resolution": [spec.width_px, spec.height_px],
+            "base_layers": spec.base_layers,
+            "feature_layers": spec.feature_layers,
+        }
+
+    @app.post("/api/calibration/preview")
+    def calibration_preview(req: CalibrationRequest) -> Response:
+        # "reference" = the LABELED map (RGB) so the layout is legible; "print" = the
+        # actual gel-only layer that gets printed (no text). Export ships both.
+        config = _config(req.config)
+        spec = calibration.build_spec(req.spec or {}, config.printer)
+        total = calibration.total_layers(spec)
+        buffer = io.BytesIO()
+        if req.view == "print":
+            index = max(1, min(req.index, total))
+            Image.fromarray(calibration.render_calibration_layer(spec, index), mode="L").save(buffer, format="PNG")
+            layer_index = str(index)
+        else:
+            Image.fromarray(calibration.render_reference(spec), mode="RGB").save(buffer, format="PNG")
+            layer_index = "1"
+        return Response(
+            content=buffer.getvalue(),
+            media_type="image/png",
+            headers={"X-Total-Layers": str(total), "X-Layer-Index": layer_index},
+        )
+
+    @app.post("/api/calibration/export")
+    def calibration_export(req: CalibrationRequest) -> FileResponse:
+        import dataclasses
+
+        config = _config(req.config)
+        spec = calibration.build_spec(req.spec or {}, config.printer)
+        total = calibration.total_layers(spec)
+        work_dir = tempfile.mkdtemp(prefix="lumengray_calib_")
+        try:
+            zip_path = os.path.join(work_dir, "calibration.zip")
+            pad = max(4, len(str(total)))
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                for index in range(1, total + 1):
+                    layer = calibration.render_calibration_layer(spec, index)
+                    buffer = io.BytesIO()
+                    Image.fromarray(layer, mode="L").save(buffer, format="PNG")
+                    archive.writestr(f"{index:0{pad}d}.png", buffer.getvalue())
+                    del layer, buffer
+                manifest = {
+                    "generator": "LumenGray calibration chip",
+                    "spec": dataclasses.asdict(spec),
+                    "answer_key": calibration.answer_key(spec),
+                }
+                archive.writestr("manifest.json", json.dumps(manifest, indent=2))
+                archive.writestr("measurement.csv", calibration.measurement_csv(spec))
+                # Labeled reference map (NOT printed) — the guide for interpreting the
+                # gel-only layers when measuring.
+                ref_buf = io.BytesIO()
+                Image.fromarray(calibration.render_reference(spec), mode="RGB").save(ref_buf, format="PNG")
+                archive.writestr("reference.png", ref_buf.getvalue())
+        except BaseException:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise
+        gc.collect()
+        return FileResponse(
+            zip_path,
+            media_type="application/zip",
+            filename="LumenX-calibration.zip",
+            background=BackgroundTask(shutil.rmtree, work_dir, ignore_errors=True),
+        )
+
+    @app.post("/api/calibration/voxels")
+    def calibration_voxels(req: CalibrationRequest) -> dict:
+        """Voxelize the calibration stack for the 3D view: downsampled (x, y, z, value)
+        voxels so pyramids/channels are visible in 3D. Bounded voxel count."""
+        config = _config(req.config)
+        spec = calibration.build_spec(req.spec or {}, config.printer)
+        total = calibration.total_layers(spec)
+        sample = calibration.render_calibration_layer(spec, min(total, spec.base_layers + 1))
+        ys, xs = np.where(sample > 0)
+        if xs.size == 0:
+            return {"voxels": [], "dims": [0, 0, 0], "count": 0, "truncated": False}
+        x0, x1, y0, y1 = int(xs.min()), int(xs.max()) + 1, int(ys.min()), int(ys.max()) + 1
+        cw, ch = x1 - x0, y1 - y0
+        f = max(1, round(max(cw, ch, total) / 56))          # ~56 voxels on the longest axis
+        nx, ny = cw // f, ch // f
+        if nx == 0 or ny == 0:
+            return {"voxels": [], "dims": [0, 0, 0], "count": 0, "truncated": False}
+        voxels: list = []
+        truncated = False
+        nz = 0
+        for zi in range(0, total, f):
+            lay = calibration.render_calibration_layer(spec, zi + 1)[y0:y0 + ny * f, x0:x0 + nx * f]
+            block = lay.reshape(ny, f, nx, f).max(axis=(1, 3))   # peak value per block
+            rr, cc = np.where(block > 0)
+            for r, c in zip(rr.tolist(), cc.tolist()):
+                voxels.append([int(c), int(ny - 1 - r), nz, int(block[r, c])])
+            nz += 1
+            if len(voxels) > 80000:
+                truncated = True
+                break
+        gc.collect()
+        return {"voxels": voxels, "dims": [nx, ny, nz], "count": len(voxels), "truncated": truncated}
 
     @app.get("/api/check-update")
     def check_update() -> dict:

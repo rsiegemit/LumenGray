@@ -25,6 +25,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <button class="ghost-btn" id="calib-btn" title="Open the LumenX calibration chip — a full-build test print for dimensional + grayscale calibration">Calibration chip</button>
       <button class="ghost-btn" id="update-btn" title="Check GitHub for a newer version of LumenGray">Check for updates</button>
       <a class="ghost-btn" href="https://github.com/rsiegemit/LumenGray" target="_blank" rel="noopener">GitHub ↗</a>
       <button id="export-btn" class="primary-btn" disabled title="Render every layer and download the full photostack as a .zip (with manifest.json).">Export stack (.zip)</button>
@@ -32,7 +33,7 @@
   </header>
   <div class="update-banner" id="update-banner" hidden></div>
 
-  <main class="layout">
+  <main class="layout" id="studio-view">
     <!-- ── Controls ─────────────────────────────────────────── -->
     <aside class="panel controls" id="controls">
       <section class="card" id="presets-card">
@@ -80,11 +81,13 @@
         <div class="grid2">
           <label title="Build-area width in pixels (printer-native, e.g. 1920).">Width (px)<input type="number" id="res-w" value="1920" min="1" step="1" /></label>
           <label title="Build-area height in pixels (e.g. 1080).">Height (px)<input type="number" id="res-h" value="1080" min="1" step="1" /></label>
-          <label title="Z thickness of one voxel (the printed layer height), in microns. LumenX protocol: 20 / 50 / 100. XY voxel size is fixed at 35µm.">Voxel height (µm)<select id="voxel-height-um">
+          <label title="Z thickness of one voxel (the printed layer height), in microns. LumenX protocol: 20 / 50 / 100.">Voxel height (µm)<select id="voxel-height-um">
             <option value="20">20</option>
             <option value="50" selected>50</option>
             <option value="100">100</option>
           </select></label>
+          <label title="X (column) voxel pitch in microns — the LumenX native pixel is 35µm. Raise it to compensate if prints come out oversized (calibration).">Voxel width X (µm)<input type="number" id="voxel-width-um" value="35" min="1" step="0.5" /></label>
+          <label title="Y (row) voxel pitch in microns (35µm native). Set independently from X to correct anisotropy.">Voxel length Y (µm)<input type="number" id="voxel-length-um" value="35" min="1" step="0.5" /></label>
         </div>
       </section>
 
@@ -327,6 +330,80 @@
       </div>
 
       <div class="statusbar" id="statusbar">Ready.</div>
+    </section>
+  </main>
+
+  <!-- ── Calibration chip (its own page) ──────────────────── -->
+  <main class="layout calib-page" id="calib-view" hidden>
+    <aside class="panel controls">
+      <section class="card">
+        <div class="calib-title">
+          <h2>LumenX calibration chip</h2>
+          <button class="ghost-btn" id="calib-back">← Back to studio</button>
+        </div>
+        <p class="hint">A single full-build test print that measures how faithfully your LumenX
+          reproduces <strong>dimensions</strong> and <strong>grayscale</strong>. Everything is a
+          robust <strong>gel feature</strong> (no text/thin rulers — they don't print in hydrogel);
+          labels live in the reference map. Export it, print it, measure under a microscope / calipers.</p>
+        <ul class="calib-legend">
+          <li><b>Scale rulers (X/Y)</b> — true pixel pitch &amp; anisotropy. Fixes "prints come out the wrong size."</li>
+          <li><b>Dimensional squares</b> — is the scale error size-dependent?</li>
+          <li><b>Grayscale step wedge</b> — which grays cure, and how (0→255).</li>
+          <li><b>Gray × feature matrix</b> — how features grow (pillars) / shrink (holes) at each gray. The core map.</li>
+          <li><b>Resolution grating</b> — smallest resolvable line pairs.</li>
+          <li><b>Outer frame &amp; L-ruler</b> — measurement datum, squareness/rotation, and orientation.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Parameters</h2>
+        <label class="seg-label">Chip</label>
+        <div class="segmented small" id="calib-variant" title="Full chip fills the whole build area; Small is a resizable ~1 cm chip for the small plate (3D pyramids, channels, grayscale-checker).">
+          <button data-variant="full" class="active">Full build</button>
+          <button data-variant="small">Small chip</button>
+        </div>
+        <div class="grid2">
+          <label id="calib-chipmm-wrap" hidden title="Small-chip side length in mm — shrink or grow it. Default 10 mm (1 cm).">Chip size (mm)<input type="number" id="calib-chipmm" value="10" min="2" step="1" /></label>
+          <label id="calib-pyr-wrap" hidden title="Small chip: N×N pyramids &amp; wells per quadrant, with base sizes swept across the grid (which sizes hold?).">Pyramids (N×N)<input type="number" id="calib-pyr" value="2" min="1" max="6" step="1" /></label>
+          <label id="calib-cmin-wrap" hidden title="Small chip: low end of the grayscale-checker diagonal (0–255).">Checker min<input type="number" id="calib-cmin" value="0" min="0" max="255" step="1" /></label>
+          <label id="calib-cmax-wrap" hidden title="Small chip: high end of the grayscale-checker diagonal (0–255).">Checker max<input type="number" id="calib-cmax" value="255" min="0" max="255" step="1" /></label>
+          <label id="calib-chn-wrap" hidden title="Small chip: number of open channels (trenches) in the Channels quadrant.">Channels<input type="number" id="calib-chn" value="4" min="1" max="16" step="1" /></label>
+          <label id="calib-chw-wrap" hidden title="Small chip: widest channel in px; widths sweep from 1 up to this (which stay open?).">Channel max (px)<input type="number" id="calib-chw" value="8" min="1" step="1" /></label>
+          <label title="Solid-white raft layers printed under the pattern (adhesion + a flat measurement datum).">Base layers<input type="number" id="calib-base" value="8" min="1" step="1" /></label>
+          <label title="How many layers the feature pattern rises (the full chip extrudes it; the small chip builds 3D pyramids/channels over these layers).">Feature layers<input type="number" id="calib-feat" value="16" min="1" step="1" /></label>
+          <label id="calib-wedge-wrap" title="Full chip only: number of patches across the 0→255 grayscale step wedge.">Wedge steps<input type="number" id="calib-wedge" value="16" min="2" step="1" /></label>
+          <label title="Recorded in the chip's title block (reference map).">Material<input type="text" id="calib-material" placeholder="GelMA 10%" /></label>
+          <label title="Recorded in the chip's title block (reference map).">Exposure<input type="text" id="calib-exposure" placeholder="8s @ 20mW" /></label>
+        </div>
+        <p class="hint">Uses the resolution &amp; voxel pitch from the studio's <b>Printer</b> card.</p>
+      </section>
+
+      <section class="card">
+        <h2>Export</h2>
+        <p class="hint">Writes the ready-to-print photostack + <b>manifest.json</b> (the answer key) + <b>measurement.csv</b> (a blank sheet to fill in).</p>
+        <button id="calib-export" class="primary-btn">Export calibration (.zip)</button>
+      </section>
+    </aside>
+
+    <section class="viewers">
+      <div class="view" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="segmented small" id="calib-view-seg" title="Labeled map · the actual gel-only layer · or a 3D view of the whole chip.">
+          <button data-cview="reference" class="active">Reference (labeled)</button>
+          <button data-cview="print">Gel print (layers)</button>
+          <button data-cview="3d">3D</button>
+        </div>
+        <div class="canvas-wrap">
+          <img id="calib-img" alt="calibration chip preview" style="max-width:100%; max-height:100%; image-rendering:pixelated;" />
+          <div id="calib-3d" style="position:absolute; inset:0; display:none;"></div>
+        </div>
+        <div class="scrubber" id="calib-scrubber" hidden>
+          <button class="step" id="calib-prev" title="previous layer">◀</button>
+          <input type="range" id="calib-slider" min="1" max="1" value="1" />
+          <button class="step" id="calib-next" title="next layer">▶</button>
+          <span class="layer-label" id="calib-layer-label">— / —</span>
+        </div>
+        <p class="hint"><b>Labeled reference map</b> (your measurement guide). The <b>printed</b> layers contain only the gel features — no text or thin rulers, since those can't print in hydrogel. Export writes the gel-only photostack + this map as <b>reference.png</b>.</p>
+      </div>
     </section>
   </main>
 

@@ -67,6 +67,14 @@ Structure / Diffusion / Void), and **Element** (one unit cell). Two **Cutaway** 
 with a parametric mm gap so neighbours don't fuse. Each copy renders identically (every part
 gets its own gradient normalization).
 
+**Calibration chip** — a header button opens a dedicated page that generates a **LumenX
+calibration test print** (no STL needed). Two variants: a **full-build chip** (scale bars,
+grayscale step wedge, gray×feature matrix, resolution grating) and a resizable **1 cm chip**
+for the small plate (3D **pyramids**, open **channels**, a grayscale **checker**), with a 3D
+view + layer scrubber. Everything printable in hydrogel — labels live in an exported
+`reference.png`, never in the print. The **X/Y voxel pitch** is editable in the Printer card to
+correct dimensional scale once you measure a print.
+
 **Reproducible** — every export ships a `manifest.json` (source model + every parameter) and a
 parameter-encoded filename; a whole run is described by one JSON config. Drop that
 `manifest.json` back onto the studio to restore the whole session.

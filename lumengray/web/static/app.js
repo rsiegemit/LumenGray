@@ -6,6 +6,7 @@ import { postJSON } from "./api.js";
 import { buildConfig, refreshConfigJson, selectMode, applyConfig, updateOutputs, updateGyroidAvail, updateGradeAvail } from "./config.js";
 import { loadModel3D, setThreeMode, buildView, applyClip, currentViewMode, refreshView, updateWfControls } from "./viewer3d.js";
 import { createRamp, ramp } from "./ramp.js";
+import { showCalib3D, stopCalib3D } from "./calib3d.js";
 
 // ── Presets ──────────────────────────────────────────────
 const svg = (inner) =>
@@ -198,6 +199,111 @@ function scheduleView3D() {
   if (!state.id || !model || model.hidden || currentViewMode() === "mesh") return;
   clearTimeout(view3dTimer);
   view3dTimer = setTimeout(refreshView, 500);
+}
+
+// ── Calibration chip (its own page) ──────────────────────
+function buildCalibrationSpec() {
+  const i = (id, d) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) ? v : d; };
+  return {
+    variant: document.querySelector("#calib-variant button.active")?.dataset.variant || "full",
+    chip_mm: i("calib-chipmm", 10),
+    pyramid_grid: i("calib-pyr", 2),
+    checker_min: i("calib-cmin", 0),
+    checker_max: i("calib-cmax", 255),
+    channel_count: i("calib-chn", 4),
+    channel_max_px: i("calib-chw", 8),
+    base_layers: i("calib-base", 8),
+    feature_layers: i("calib-feat", 16),
+    wedge_steps: i("calib-wedge", 16),
+    material: $("calib-material").value,
+    exposure: $("calib-exposure").value,
+  };
+}
+
+// Show/hide the calibration page (a full view, separate from the studio).
+function setCalibPage(on) {
+  $("studio-view").hidden = on;
+  $("calib-view").hidden = !on;
+  if (on) { applyCalibVariant(); renderCalibPreview(); }
+}
+
+// Chip-size applies only to the small chip; the wedge steps only to the full chip.
+function applyCalibVariant() {
+  const small = document.querySelector("#calib-variant button.active")?.dataset.variant === "small";
+  ["calib-chipmm-wrap", "calib-pyr-wrap", "calib-cmin-wrap", "calib-cmax-wrap", "calib-chn-wrap", "calib-chw-wrap"]
+    .forEach((id) => { $(id).hidden = !small; });
+  $("calib-wedge-wrap").hidden = small;
+}
+
+let calibTimer = null;
+function scheduleCalibPreview() {
+  clearTimeout(calibTimer);
+  calibTimer = setTimeout(renderCalibPreview, 150);
+}
+
+// Render the calibration preview — the labeled reference map, the gel-only print layer
+// (scrubbable), or the 3D chip — per the Reference / Gel print / 3D toggle.
+let calibIndex = 1, calibTotal = 1;
+function calibView() { return document.querySelector("#calib-view-seg button.active")?.dataset.cview || "reference"; }
+
+async function renderCalibPreview() {
+  const spec = buildCalibrationSpec();
+  const view = calibView();
+  const img = $("calib-img"), threed = $("calib-3d");
+  if (view === "3d") {
+    img.style.display = "none"; threed.style.display = "block"; $("calib-scrubber").hidden = true;
+    status("Building 3D chip…", "busy");
+    try {
+      const data = await postJSON("/api/calibration/voxels", { config: buildConfig(), spec });
+      const ok = await showCalib3D(threed, data);
+      status(ok ? `3D chip — ${data.count} voxels${data.truncated ? " (truncated)" : ""}. Drag to orbit.` : "3D unavailable — couldn't load three.js (check your connection).");
+    } catch (e) { status(e.message, "error"); }
+    return;
+  }
+  stopCalib3D(); threed.style.display = "none"; img.style.display = "block";
+  const isPrint = view === "print";
+  $("calib-scrubber").hidden = !isPrint;
+  status("Rendering calibration chip…", "busy");
+  try {
+    const res = await fetch("/api/calibration/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: buildConfig(), spec, view: isPrint ? "print" : "reference", index: calibIndex }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "render failed");
+    calibTotal = parseInt(res.headers.get("X-Total-Layers") || "1", 10);
+    if (isPrint) {
+      calibIndex = Math.min(Math.max(1, calibIndex), calibTotal);
+      const slider = $("calib-slider"); slider.max = calibTotal; slider.value = calibIndex;
+      $("calib-layer-label").textContent = `${calibIndex} / ${calibTotal}`;
+    }
+    const blob = await res.blob();
+    if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+    const url = URL.createObjectURL(blob); img.dataset.url = url; img.src = url;
+    status(`Calibration chip — ${calibTotal} layers`);
+  } catch (e) { status(e.message, "error"); }
+}
+
+async function exportCalibration() {
+  const btn = $("calib-export");
+  btn.disabled = true;
+  status("Building calibration photostack…", "busy");
+  try {
+    const res = await fetch("/api/calibration/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: buildConfig(), spec: buildCalibrationSpec() }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "export failed");
+    const blob = await res.blob();
+    const name = (res.headers.get("Content-Disposition") || "").match(/filename="(.+?)"/)?.[1] || "LumenX-calibration.zip";
+    downloadBlob(blob, name);
+    status("Exported " + name + " (" + (blob.size / 1024).toFixed(0) + " KB) — includes manifest.json + measurement.csv");
+  } catch (e) {
+    status(e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function requestPreview() {
@@ -469,6 +575,33 @@ function wire() {
   ["wf3d-tlow", "wf3d-thigh", "wf3d-lfrom", "wf3d-lto"].forEach((id) => $(id).addEventListener("change", refreshView));
   $("clip-slider").addEventListener("input", applyClip);
   $("clip-slider-z").addEventListener("input", applyClip);
+
+  // calibration chip: its own page (header button), fully separate from the studio
+  $("calib-btn").addEventListener("click", () => setCalibPage(true));
+  $("calib-back").addEventListener("click", () => setCalibPage(false));
+  $("calib-export").addEventListener("click", exportCalibration);
+  ["calib-chipmm", "calib-pyr", "calib-cmin", "calib-cmax", "calib-chn", "calib-chw", "calib-base", "calib-feat", "calib-wedge", "calib-material", "calib-exposure"].forEach((id) =>
+    $(id).addEventListener("input", scheduleCalibPreview));
+  document.querySelectorAll("#calib-view-seg button").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#calib-view-seg button").forEach((b) => b.classList.toggle("active", b === btn));
+      if (btn.dataset.cview === "print") {  // start mid-stack so 3D features show their taper
+        const s = buildCalibrationSpec();
+        calibIndex = (s.base_layers || 1) + Math.max(1, Math.floor((s.feature_layers || 2) / 2));
+      }
+      renderCalibPreview();
+    }));
+  const scrub = (i) => { calibIndex = Math.min(Math.max(1, i), calibTotal); $("calib-slider").value = calibIndex; $("calib-layer-label").textContent = `${calibIndex} / ${calibTotal}`; scheduleCalibPreview(); };
+  $("calib-slider").addEventListener("input", (e) => scrub(parseInt(e.target.value, 10)));
+  $("calib-prev").addEventListener("click", () => scrub(calibIndex - 1));
+  $("calib-next").addEventListener("click", () => scrub(calibIndex + 1));
+  document.querySelectorAll("#calib-variant button").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#calib-variant button").forEach((b) => b.classList.toggle("active", b === btn));
+      applyCalibVariant();
+      renderCalibPreview();
+    }));
+  applyCalibVariant();
 
   // physical scale bar on the layer preview (toggle + drag to reposition)
   $("scale-on").addEventListener("change", updateScaleBar);

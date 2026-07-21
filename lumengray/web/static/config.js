@@ -86,8 +86,8 @@ export function buildConfig() {
   const config = {
     printer: {
       resolution: [int("res-w", 1920), int("res-h", 1080)],
-      voxel_width_um: 35,   // X — fixed for now (not user-editable)
-      voxel_length_um: 35,  // Y — fixed for now (not user-editable)
+      voxel_width_um: num("voxel-width-um", 35),   // X pitch (editable — calibration)
+      voxel_length_um: num("voxel-length-um", 35), // Y pitch (editable — calibration)
       voxel_height_um: num("voxel-height-um", 50),
     },
     model: {
@@ -171,6 +171,8 @@ export function applyConfig(c) {
   const p = c.printer || {}, m = c.model || {}, g = c.grayscale || {};
   if (p.resolution) { setVal("res-w", p.resolution[0]); setVal("res-h", p.resolution[1]); }
   if (p.voxel_height_um != null) setVal("voxel-height-um", p.voxel_height_um);
+  if (p.voxel_width_um != null) setVal("voxel-width-um", p.voxel_width_um);
+  if (p.voxel_length_um != null) setVal("voxel-length-um", p.voxel_length_um);
   if (typeof m.center_xy === "boolean") $("center-xy").checked = m.center_xy;
   if (m.rotation_deg) { setVal("rot-x", m.rotation_deg[0]); setVal("rot-y", m.rotation_deg[1]); setVal("rot-z", m.rotation_deg[2]); }
   if (m.array_count != null) setVal("array-count", m.array_count);
