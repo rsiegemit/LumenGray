@@ -910,7 +910,7 @@ def create_app() -> FastAPI:
             return {"voxels": [], "dims": [0, 0, 0], "count": 0, "truncated": False}
         x0, x1, y0, y1 = int(xs.min()), int(xs.max()) + 1, int(ys.min()), int(ys.max()) + 1
         cw, ch = x1 - x0, y1 - y0
-        f = max(1, round(max(cw, ch, total) / 56))          # ~56 voxels on the longest axis
+        f = max(1, round(max(cw, ch, total) / 110))         # ~110 voxels on the longest axis (finer = small features survive)
         nx, ny = cw // f, ch // f
         if nx == 0 or ny == 0:
             return {"voxels": [], "dims": [0, 0, 0], "count": 0, "truncated": False}
@@ -924,7 +924,7 @@ def create_app() -> FastAPI:
             for r, c in zip(rr.tolist(), cc.tolist()):
                 voxels.append([int(c), int(ny - 1 - r), nz, int(block[r, c])])
             nz += 1
-            if len(voxels) > 80000:
+            if len(voxels) > 300000:
                 truncated = True
                 break
         gc.collect()

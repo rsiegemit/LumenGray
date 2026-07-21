@@ -53,7 +53,7 @@ class CalibrationSpec:
     variant: str = "full"          # "full" (whole build area) | "small" (a 1 cm chip)
     chip_mm: float = 10.0          # small variant: chip side length
     pyramid_grid: int = 2          # small variant: N x N pyramids per quadrant (base sizes sweep)
-    checker_min: int = 0           # small variant: low end of the grayscale-checker range
+    checker_min: int = 64          # small variant: low end of the grayscale-checker range
     checker_max: int = 255         # small variant: high end of the grayscale-checker range
     channel_count: int = 4         # small variant: number of open channels (trenches)
     channel_max_px: int = 8        # small variant: widest channel (widths sweep 1..this)
@@ -82,7 +82,7 @@ def build_spec(raw: dict, printer) -> CalibrationSpec:
         variant=("small" if str(raw.get("variant", "full")) == "small" else "full"),
         chip_mm=max(2.0, float(raw.get("chip_mm", 10.0) or 10.0)),
         pyramid_grid=max(1, min(6, _i("pyramid_grid", 2))),
-        checker_min=max(0, min(255, _i("checker_min", 0))),
+        checker_min=max(0, min(255, _i("checker_min", 64))),
         checker_max=max(0, min(255, _i("checker_max", 255))),
         channel_count=max(1, min(16, _i("channel_count", 4))),
         channel_max_px=max(1, _i("channel_max_px", 8)),
