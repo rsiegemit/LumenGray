@@ -593,32 +593,52 @@ async function checkPrintability() {
   } catch (e) { status(e.message, "error"); return []; }
 }
 
-// Blocking warning modal; resolves true (proceed) / false (cancel).
+// Blocking warning modal with a per-category "Allow fix" checkbox. Resolves the set of
+// allowed fixes {fix_pillar, fix_channel}, or null if the user cancels.
 function showPrintWarning(flags) {
   return new Promise((resolve) => {
-    $("print-warn-body").innerHTML = flags.map((f) => `<div class="warn-item"><h3>⚠️ ${f.title}</h3><p class="hint">${f.detail}</p></div>`).join("");
+    $("print-warn-body").innerHTML = flags.map((f) =>
+      `<div class="warn-item"><h3>⚠️ ${f.title}</h3><p class="hint">${f.detail}</p>
+       <label><input type="checkbox" class="warn-allow" data-fix="${f.key}" /> Allow grow-to-min fix for this</label></div>`).join("");
     const modal = $("print-warn"), cancel = $("print-warn-cancel"), proceed = $("print-warn-proceed");
     modal.hidden = false;
     const done = (v) => { modal.hidden = true; cancel.removeEventListener("click", onCancel); proceed.removeEventListener("click", onProceed); resolve(v); };
-    const onCancel = () => done(false), onProceed = () => done(true);
+    const onCancel = () => done(null);
+    const onProceed = () => {
+      const allow = {};
+      document.querySelectorAll(".warn-allow").forEach((cb) => { if (cb.checked) allow["fix_" + cb.dataset.fix] = true; });
+      done(allow);
+    };
     cancel.addEventListener("click", onCancel); proceed.addEventListener("click", onProceed);
   });
 }
 
 async function exportStack() {
   if (!state.id) return;
+  const cfg = buildConfig();
   if (calibLimits) {
     const flags = await checkPrintability();
-    if (flags.length && !(await showPrintWarning(flags))) { status("Export cancelled."); return; }
+    if (flags.length) {
+      const allow = await showPrintWarning(flags);
+      if (!allow) { status("Export cancelled."); return; }
+      if (allow.fix_pillar || allow.fix_channel) {
+        cfg.grayscale.min_feature = {
+          fix_pillar: !!allow.fix_pillar,
+          fix_channel: !!allow.fix_channel,
+          min_pillar_um: calibLimits.min_pillar_um || 0,
+          min_channel_um: calibLimits.min_channel_um || 0,
+        };
+      }
+    }
   }
   const btn = $("export-btn");
   btn.disabled = true;
-  status("Building full stack (this may take a moment)…", "busy");
+  status(cfg.grayscale.min_feature ? "Building stack with grow-to-min fixes…" : "Building full stack (this may take a moment)…", "busy");
   try {
     const res = await fetch("/api/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: state.id, config: buildConfig() }),
+      body: JSON.stringify({ id: state.id, config: cfg }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));

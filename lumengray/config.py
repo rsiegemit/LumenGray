@@ -203,6 +203,18 @@ class Grade:
 
 
 @dataclass(frozen=True)
+class MinFeature:
+    """Calibration guardrail FIX (grow-to-min). Grows cured features below
+    ``min_pillar_um`` and widens voids below ``min_channel_um`` so they print. Applied
+    ONLY when the user explicitly allowed a category; a no-op otherwise."""
+
+    min_pillar_um: float
+    min_channel_um: float
+    fix_pillar: bool
+    fix_channel: bool
+
+
+@dataclass(frozen=True)
 class Config:
     printer: Printer
     default_solid_value: int  # fill value for cured pixels (255 = full exposure)
@@ -217,6 +229,7 @@ class Config:
     octet: OctetTessellation | None  # octet-truss infill; overrides the above
     gyroid: GyroidChannel | None  # gyroid void-connector overlay (composes on any mode)
     grade: Grade | None  # structure->core exposure gradient for tessellation cells
+    min_feature: MinFeature | None = None  # calibration grow-to-min fix (opt-in; None = off)
 
 
 def default_config() -> Config:
@@ -304,6 +317,8 @@ def config_to_dict(config: Config) -> dict:
         grayscale["connect_voids"] = asdict(config.gyroid)
     if config.grade is not None:  # structure->core gradient (tessellation cells)
         grayscale["grade"] = asdict(config.grade)
+    if config.min_feature is not None:  # calibration grow-to-min fix (opt-in)
+        grayscale["min_feature"] = asdict(config.min_feature)
     return {
         "printer": {
             "resolution": list(config.printer.resolution),
@@ -341,6 +356,7 @@ def _build_config(raw: dict) -> Config:
     octet = _build_octet(grayscale.get("octet_tessellation"))
     gyroid = _build_gyroid(grayscale.get("connect_voids"))
     grade = _build_grade(grayscale.get("grade"))
+    min_feature = _build_min_feature(grayscale.get("min_feature"))
     model = raw.get("model", {})
     center_xy = bool(model.get("center_xy", base.center_xy))
     rotation = _validate_rotation(model.get("rotation_deg", base.rotation_deg))
@@ -352,7 +368,7 @@ def _build_config(raw: dict) -> Config:
         raise ConfigError("model.array_spacing_mm must be a number >= 0")
     return Config(
         printer, default_solid_value, gradient, center_xy, rotation, array_count, float(array_spacing),
-        regions, tessellation, triangulation, octet, gyroid, grade
+        regions, tessellation, triangulation, octet, gyroid, grade, min_feature
     )
 
 
@@ -572,6 +588,25 @@ def _build_grade(raw) -> Grade | None:
     stops = _parse_ramp(raw.get("stops", DEFAULT_GRADE["stops"]), interp, "grayscale.grade")
     band_px = _non_negative_int(raw.get("band_px", 0), "grayscale.grade.band_px")
     return Grade(stops=stops, interp=interp, band_px=band_px)
+
+
+def _build_min_feature(raw) -> "MinFeature | None":
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("'grayscale.min_feature' must be an object")
+    fix_pillar = bool(raw.get("fix_pillar", False))
+    fix_channel = bool(raw.get("fix_channel", False))
+    if not (fix_pillar or fix_channel):
+        return None  # nothing enabled -> treat as absent so render_layer is a strict no-op
+    mp = raw.get("min_pillar_um", 0) or 0
+    mc = raw.get("min_channel_um", 0) or 0
+    if not isinstance(mp, (int, float)) or isinstance(mp, bool) or mp < 0:
+        raise ConfigError("grayscale.min_feature.min_pillar_um must be a number >= 0")
+    if not isinstance(mc, (int, float)) or isinstance(mc, bool) or mc < 0:
+        raise ConfigError("grayscale.min_feature.min_channel_um must be a number >= 0")
+    return MinFeature(min_pillar_um=float(mp), min_channel_um=float(mc),
+                      fix_pillar=fix_pillar, fix_channel=fix_channel)
 
 
 def _build_printer(raw: dict, base: Printer) -> Printer:

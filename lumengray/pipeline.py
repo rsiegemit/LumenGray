@@ -18,6 +18,7 @@ from .grayscale import base_layer, overlay_regions
 from .preview import build_contact_sheet, make_thumbnail, sample_indices
 from .slicer import array_mesh, canvas_origin, count_layers, load_mesh, orient_mesh, slice_index
 from .grade import grade_layer, distance_depth
+from .min_feature import apply_min_feature
 from .octet import octet_layer, octet_core_depth
 from .tessellation import tessellation_layer
 from .triangulation import triangulation_layer, tri_core_depth
@@ -329,6 +330,17 @@ def render_layer(solid, index, total_layers, config: Config, regions, pixel_mm):
         layer = grade_layer(layer, solid, config.grade, depth)
     if config.gyroid is not None:  # overlay: connect every void into one network
         layer = _void_connect_carve(layer, solid, index, total_layers, config)
+    if config.min_feature is not None:  # calibration grow-to-min fix — FINAL post-process,
+        # opt-in only. apply_min_feature returns the SAME array untouched when nothing
+        # qualifies, so this line is a strict no-op whenever the fix isn't in play.
+        mf = config.min_feature
+        px_um = config.printer.voxel_width_um
+        layer = apply_min_feature(
+            layer, solid,
+            min_pillar_px=(mf.min_pillar_um / px_um if mf.min_pillar_um else 0.0),
+            min_channel_px=(mf.min_channel_um / px_um if mf.min_channel_um else 0.0),
+            fix_pillar=mf.fix_pillar, fix_channel=mf.fix_channel,
+        )
     return layer
 
 
