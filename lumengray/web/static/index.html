@@ -358,9 +358,9 @@
       <section class="card">
         <h2>Parameters</h2>
         <label class="seg-label">Chip</label>
-        <div class="segmented small" id="calib-variant" title="Full chip fills the whole build area; Small is a resizable ~1 cm chip for the small plate (3D pyramids, channels, grayscale-checker).">
-          <button data-variant="full" class="active">Full build</button>
-          <button data-variant="small">Small chip</button>
+        <div class="segmented small" id="calib-variant" title="Small is a resizable ~1 cm chip for the small plate (3D pyramids, channels, grayscale-checker); Full fills the whole build area.">
+          <button data-variant="small" class="active">Small chip</button>
+          <button data-variant="full">Full build</button>
         </div>
         <div class="grid2">
           <label id="calib-chipmm-wrap" hidden title="Small-chip side length in mm — shrink or grow it. Default 10 mm (1 cm).">Chip size (mm)<input type="number" id="calib-chipmm" value="10" min="2" step="1" /></label>
@@ -414,6 +414,19 @@
       </div>
     </section>
   </main>
+
+  <!-- ── Printability warning (Phase-3 guardrail) ────────── -->
+  <div class="modal-overlay" id="print-warn" hidden>
+    <div class="modal">
+      <h2>⚠️ Printability warnings</h2>
+      <p class="hint">Based on your measured printability limits, this design has features the printer may not reproduce. Review each below.</p>
+      <div id="print-warn-body"></div>
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button class="ghost-btn" id="print-warn-cancel">Cancel export</button>
+        <button class="primary-btn" id="print-warn-proceed">Export as designed anyway</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="/static/app.js"></script>
 </body>

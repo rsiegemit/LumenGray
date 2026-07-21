@@ -127,6 +127,13 @@ class SolveRequest(BaseModel):
     csv: str               # the filled-in measurement.csv text
 
 
+class PrintCheckRequest(BaseModel):
+    id: str
+    config: dict
+    limits: dict = {}      # {min_pillar_um, min_channel_um, ...} from the small-chip wizard
+    samples: int = 16
+
+
 class CageRequest(BaseModel):
     id: str
     config: dict
@@ -922,6 +929,62 @@ def create_app() -> FastAPI:
                 break
         gc.collect()
         return {"voxels": voxels, "dims": [nx, ny, nz], "count": len(voxels), "truncated": truncated}
+
+    @app.post("/api/printability-check")
+    def printability_check(req: PrintCheckRequest) -> dict:
+        """Phase 3 (flagging only — mutates NOTHING): sample the loaded design's
+        photostack and detect solid features thinner than min_pillar and voids
+        narrower than min_channel, via morphological opening. Reports counts per
+        category so the UI can warn and ask permission before any fix."""
+        item = _get(req.id)
+        config = _config(req.config)
+        limits = req.limits or {}
+        mesh = _oriented(item, config)
+        total = count_layers(mesh, config.printer)
+        if total == 0:
+            raise HTTPException(400, "No layers produced; check layer height vs model Z extent")
+        px_um = config.printer.voxel_width_um
+        pixel_mm = px_um / 1000.0
+        regions = resolve_regions(config, canvas_origin(mesh, config.printer, config.center_xy))
+        mp, mc = limits.get("min_pillar_um"), limits.get("min_channel_um")
+        r_p = max(1, round((mp / px_um) / 2)) if mp else 0
+        r_c = max(1, round((mc / px_um) / 2)) if mc else 0
+
+        def disk(r):
+            yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+            return (xx * xx + yy * yy) <= r * r
+
+        thin_solid = solid_total = thin_void = void_total = layers = 0
+        for i0 in sample_indices(total, min(max(1, req.samples), total)):
+            idx = i0 + 1
+            sld = slice_index(mesh, config.printer, config.center_xy, idx)
+            lay = render_layer(sld, idx, total, config, regions, pixel_mm)
+            solid = lay > 0
+            solid_total += int(solid.sum())
+            if r_p:
+                opened = ndimage.binary_opening(solid, structure=disk(r_p))
+                thin_solid += int((solid & ~opened).sum())
+            void = sld & (lay < 64)              # carved lumen within the body
+            void_total += int(void.sum())
+            if r_c and void.any():
+                opened_v = ndimage.binary_opening(void, structure=disk(r_c))
+                thin_void += int((void & ~opened_v).sum())
+            layers += 1
+        gc.collect()
+        # Flag a category only when a MEANINGFUL fraction is thin (>=1%). Opening a
+        # solid convex shape leaves tiny corner slivers (~0%) that aren't real thin
+        # features — the threshold rejects those.
+        FLAG_PCT = 1.0
+        out: dict = {"layers_checked": layers}
+        if mp:
+            pct = round(100 * thin_solid / max(1, solid_total), 1)
+            out["pillar"] = {"limit_um": mp, "below": pct >= FLAG_PCT, "thin_px": thin_solid,
+                             "solid_px": solid_total, "pct": pct}
+        if mc:
+            pct = round(100 * thin_void / max(1, void_total), 1)
+            out["channel"] = {"limit_um": mc, "below": pct >= FLAG_PCT, "thin_px": thin_void,
+                              "void_px": void_total, "pct": pct}
+        return out
 
     @app.post("/api/calibration/steps")
     def calibration_steps(req: CalibrationRequest) -> dict:

@@ -430,24 +430,33 @@ def _small_layer(spec: CalibrationSpec, index: int) -> np.ndarray:
     return np.array(img, dtype=np.uint8)
 
 
+def _pyramid_bases(rect, n):
+    """Base sizes (px) for an n x n grid, swept GEOMETRICALLY from ~2 px (probes the
+    min-feature limit) up to ~0.9 of the cell, so the smallest pyramids/wells actually
+    find the resolution limit. Same order as the drawn grid."""
+    x0, y0, x1, y1 = rect
+    cell = min((x1 - x0) / n, (y1 - y0) / n)
+    total = n * n
+    lo, hi = 2.0, max(3.0, cell * 0.9)
+    return [lo * (hi / lo) ** (k / (total - 1) if total > 1 else 1.0) for k in range(total)]
+
+
 def _grid_cells(rect, n):
-    """Yield (cx, cy, cell, frac) for an n x n grid: centre, cell size, and a 0.4..0.95
-    base-size fraction that SWEEPS across the grid so each pyramid/well is a different
-    size (which sizes survive?)."""
+    """Yield (cx, cy, base_px) for each cell of the n x n grid, base sizes from
+    ``_pyramid_bases``."""
     x0, y0, x1, y1 = rect
     cw, ch = (x1 - x0) / n, (y1 - y0) / n
-    total = n * n
+    bases = _pyramid_bases(rect, n)
     for k, (i, j) in enumerate((i, j) for i in range(n) for j in range(n)):
-        frac = 0.4 + 0.55 * (k / (total - 1) if total > 1 else 1.0)
-        yield x0 + (j + 0.5) * cw, y0 + (i + 0.5) * ch, min(cw, ch), frac
+        yield x0 + (j + 0.5) * cw, y0 + (i + 0.5) * ch, bases[k]
 
 
 def _pyramids_out(d, rect, z, F, n):
     """Solid square pyramids pointing UP: cross-section shrinks toward the tip as the
     layer rises. n x n of sweeping base sizes — tests self-support / which sizes hold."""
     t = z / max(1, F - 1)
-    for cx, cy, cell, frac in _grid_cells(rect, n):
-        s = cell * frac * (1.0 - t)
+    for cx, cy, base in _grid_cells(rect, n):
+        s = base * (1.0 - t)
         if s >= 1:
             d.rectangle([cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2], fill=WHITE)
 
@@ -458,8 +467,8 @@ def _pyramids_in(d, rect, z, F, n):
     x0, y0, x1, y1 = rect
     d.rectangle([x0, y0, x1 - 1, y1 - 1], fill=WHITE)
     t = z / max(1, F - 1)
-    for cx, cy, cell, frac in _grid_cells(rect, n):
-        s = cell * frac * t
+    for cx, cy, base in _grid_cells(rect, n):
+        s = base * t
         if s >= 1:
             d.rectangle([cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2], fill=0)
 
@@ -554,7 +563,20 @@ def measurement_steps(spec: CalibrationSpec) -> list:
     chip only). Each step carries the nominal value + how to interpret the answer. The
     UI collects one measurement per step, then feeds them to ``solve``."""
     if spec.variant == "small":
-        return []
+        px = spec.voxel_width_um
+        q = _small_quads(spec)
+        pyr_um = sorted({round(b * px) for b in _pyramid_bases(q["bl"], spec.pyramid_grid)})
+        chan_um = [round(w * px) for w in _channel_widths(spec.channel_count, spec.channel_max_px)]
+        return [
+            {"id": "min_pillar", "group": "Pyramids", "kind": "pick", "options": pyr_um,
+             "prompt": "The solid pyramids run smallest → largest. Pick the SMALLEST that printed as a clean pyramid."},
+            {"id": "min_well", "group": "Wells", "kind": "pick", "options": pyr_um,
+             "prompt": "The funnel wells run smallest → largest. Pick the SMALLEST well that stayed open (didn't fill in)."},
+            {"id": "min_channel", "group": "Channels", "kind": "pick", "options": chan_um,
+             "prompt": "The channels run narrow → wide. Pick the NARROWEST channel still open (not fused shut)."},
+            {"id": "checker_ok", "group": "Grayscale", "kind": "yesno",
+             "prompt": "Are the grayscale checker cells distinct — each gray clearly separate, not bleeding together?"},
+        ]
     px, py = spec.voxel_width_um, spec.voxel_length_um
     steps = []
     steps.append({"id": "comb_X", "group": "Scale", "zone": "comb", "axis": "X", "design_gray": 255,

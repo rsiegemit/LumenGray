@@ -309,9 +309,10 @@ async function exportCalibration() {
 // Phase 2: a step-by-step measurement wizard → solve → show corrections.
 let calibSteps = [], calibStepIdx = 0, calibAnswers = {};
 
+let calibLimits = null;  // small-chip printability limits (for the Phase-3 guardrails)
+
 async function startCalibWizard() {
   const spec = buildCalibrationSpec();
-  if (spec.variant === "small") { status("Step-by-step calibration is for the full-build chip (switch Chip → Full build).", "error"); return; }
   status("Preparing calibration steps…", "busy");
   try {
     const res = await postJSON("/api/calibration/steps", { config: buildConfig(), spec });
@@ -328,9 +329,16 @@ async function startCalibWizard() {
 function renderWizStep() {
   const s = calibSteps[calibStepIdx], w = $("calib-wiz");
   const prev = calibAnswers[s.id] ?? "";
-  const input = s.kind === "resolution"
-    ? `<select id="calib-wiz-input"><option value="">— none resolved —</option>${s.options.map((o) => `<option value="${o}" ${String(o) === String(prev) ? "selected" : ""}>${o} µm</option>`).join("")}</select>`
-    : `<input type="number" id="calib-wiz-input" step="any" placeholder="measured µm" value="${prev}" />`;
+  const opt = (o, lbl) => `<option value="${o}" ${String(o) === String(prev) ? "selected" : ""}>${lbl}</option>`;
+  let input;
+  if (s.kind === "resolution" || s.kind === "pick") {
+    const none = s.kind === "resolution" ? "— none resolved —" : "— none / didn't print —";
+    input = `<select id="calib-wiz-input"><option value="">${none}</option>${s.options.map((o) => opt(o, o + " µm")).join("")}</select>`;
+  } else if (s.kind === "yesno") {
+    input = `<select id="calib-wiz-input"><option value="">—</option>${opt("yes", "Yes — distinct")}${opt("no", "No — bleeding")}</select>`;
+  } else {
+    input = `<input type="number" id="calib-wiz-input" step="any" placeholder="measured µm" value="${prev}" />`;
+  }
   const last = calibStepIdx === calibSteps.length - 1;
   w.innerHTML = `
     <div class="wiz-head"><span class="badge">${s.group}</span><span class="hint">${calibStepIdx + 1} / ${calibSteps.length}</span></div>
@@ -355,8 +363,35 @@ function advanceWiz() {
   else finishCalibWizard();
 }
 
+// Small chip: the answers ARE the printability limits — record them (they become the
+// Phase-3 guardrails). No fitting, no photostack mutation.
+function finishCalibSmall() {
+  const a = calibAnswers, num = (v) => (v ? +v : null);
+  calibLimits = {
+    min_pillar_um: num(a.min_pillar),
+    min_well_um: num(a.min_well),
+    min_channel_um: num(a.min_channel),
+    checker_ok: a.checker_ok || null,
+  };
+  $("calib-wiz").hidden = true;
+  const out = $("calib-solve-out");
+  out.hidden = false;
+  const L = calibLimits, row = (k, v, u) => `<tr><td>${k}</td><td>${v != null ? v + (u || "") : "—"}</td></tr>`;
+  out.innerHTML = `
+    <h3>Printability limits</h3>
+    <table class="calib-tbl">
+      ${row("Min printable pillar", L.min_pillar_um, " µm")}
+      ${row("Min open well", L.min_well_um, " µm")}
+      ${row("Min open channel", L.min_channel_um, " µm")}
+      ${row("Grayscale checker distinct", L.checker_ok === "yes" ? "yes" : L.checker_ok === "no" ? "no" : null, "")}
+    </table>
+    <p class="hint">These become guardrails: on export, any feature below a limit is flagged for you to allow a fix (coming next).</p>`;
+  status("Printability limits recorded.");
+}
+
 // Build solve-compatible CSV rows from the collected answers, then solve.
 async function finishCalibWizard() {
+  if (buildCalibrationSpec().variant === "small") { finishCalibSmall(); return; }
   const lines = ["zone,id,axis,design_gray,nominal_um,measured_um,notes"];
   const resStep = calibSteps.find((s) => s.kind === "resolution");
   for (const s of calibSteps) {
@@ -546,8 +581,36 @@ function wireZoom() {
 }
 
 // ── Export ───────────────────────────────────────────────
+// Phase-3 guardrail: if printability limits are loaded, check the design and return
+// the flagged categories (mutates nothing).
+async function checkPrintability() {
+  try {
+    const chk = await postJSON("/api/printability-check", { id: state.id, config: buildConfig(), limits: calibLimits });
+    const flags = [];
+    if (chk.pillar?.below) flags.push({ key: "pillar", title: "Features below the minimum printable size", detail: `${chk.pillar.pct}% of the cured area is thinner than ${chk.pillar.limit_um} µm — those features may not print / may vanish.` });
+    if (chk.channel?.below) flags.push({ key: "channel", title: "Channels / voids below the minimum open width", detail: `${chk.channel.pct}% of the void area is narrower than ${chk.channel.limit_um} µm — those channels may fuse shut.` });
+    return flags;
+  } catch (e) { status(e.message, "error"); return []; }
+}
+
+// Blocking warning modal; resolves true (proceed) / false (cancel).
+function showPrintWarning(flags) {
+  return new Promise((resolve) => {
+    $("print-warn-body").innerHTML = flags.map((f) => `<div class="warn-item"><h3>⚠️ ${f.title}</h3><p class="hint">${f.detail}</p></div>`).join("");
+    const modal = $("print-warn"), cancel = $("print-warn-cancel"), proceed = $("print-warn-proceed");
+    modal.hidden = false;
+    const done = (v) => { modal.hidden = true; cancel.removeEventListener("click", onCancel); proceed.removeEventListener("click", onProceed); resolve(v); };
+    const onCancel = () => done(false), onProceed = () => done(true);
+    cancel.addEventListener("click", onCancel); proceed.addEventListener("click", onProceed);
+  });
+}
+
 async function exportStack() {
   if (!state.id) return;
+  if (calibLimits) {
+    const flags = await checkPrintability();
+    if (flags.length && !(await showPrintWarning(flags))) { status("Export cancelled."); return; }
+  }
   const btn = $("export-btn");
   btn.disabled = true;
   status("Building full stack (this may take a moment)…", "busy");

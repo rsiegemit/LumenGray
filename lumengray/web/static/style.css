@@ -239,6 +239,14 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .calib-legend li { margin-bottom: 5px; }
 .calib-legend b { color: var(--text); }
 #calib-view .canvas-wrap { min-height: 60vh; }
+/* modal (printability warnings) */
+.modal-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .6); display: flex; align-items: center; justify-content: center; }
+.modal { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; width: min(560px, 92vw); max-height: 86vh; overflow: auto; box-shadow: 0 10px 40px rgba(0, 0, 0, .5); }
+.modal h2 { margin: 0 0 8px; }
+.warn-item { border: 1px solid var(--bad); border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: rgba(255, 90, 90, .08); }
+.warn-item h3 { margin: 0 0 4px; font-size: 14px; }
+.warn-item label { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; }
+
 .calib-wiz { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card-2); }
 .wiz-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .wiz-prompt { margin: 4px 0; font-size: 14px; }
