@@ -239,6 +239,17 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-tr
 .calib-legend li { margin-bottom: 5px; }
 .calib-legend b { color: var(--text); }
 #calib-view .canvas-wrap { min-height: 60vh; }
+.calib-wiz { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card-2); }
+.wiz-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.wiz-prompt { margin: 4px 0; font-size: 14px; }
+.wiz-input { margin: 8px 0; }
+.wiz-input input, .wiz-input select { width: 100%; }
+.calib-solve-out { margin-top: 10px; font-size: 13px; }
+.calib-solve-out h3 { margin: 12px 0 4px; font-size: 13px; color: var(--accent); }
+.calib-solve-out p { margin: 3px 0; }
+.calib-tbl { border-collapse: collapse; margin: 4px 0; width: 100%; }
+.calib-tbl th, .calib-tbl td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; font-variant-numeric: tabular-nums; }
+#calib-apply-pitch { margin: 6px 0; }
 
 .scale-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .scale-toggle input { margin: 0; }

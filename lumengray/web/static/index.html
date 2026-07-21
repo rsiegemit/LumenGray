@@ -383,6 +383,14 @@
         <p class="hint">Writes the ready-to-print photostack + <b>manifest.json</b> (the answer key) + <b>measurement.csv</b> (a blank sheet to fill in).</p>
         <button id="calib-export" class="primary-btn">Export calibration (.zip)</button>
       </section>
+
+      <section class="card">
+        <h2>Step-by-step calibration</h2>
+        <p class="hint">Print the full-build chip and measure it under a scope / calipers. This walks you through each measurement one at a time, then computes the true pixel pitch, the gray→bloom curve, cure threshold, and resolution.</p>
+        <button class="ghost-btn" id="calib-wiz-start">Start calibration →</button>
+        <div id="calib-wiz" class="calib-wiz" hidden></div>
+        <div id="calib-solve-out" class="calib-solve-out" hidden></div>
+      </section>
     </aside>
 
     <section class="viewers">

@@ -30,7 +30,7 @@ from starlette.background import BackgroundTask
 from PIL import Image
 from pydantic import BaseModel
 
-from .. import calibration
+from .. import calibration, calibration_solve
 from ..config import ConfigError, config_from_dict
 from ..octet import octet_struts
 from ..pipeline import render_layer, resolve_regions, run
@@ -120,6 +120,11 @@ class CalibrationRequest(BaseModel):
     spec: dict | None = None
     index: int = 1
     view: str = "reference"  # "reference" (labeled map) | "print" (gel-only layer)
+
+
+class SolveRequest(BaseModel):
+    config: dict           # supplies the assumed XY pitch
+    csv: str               # the filled-in measurement.csv text
 
 
 class CageRequest(BaseModel):
@@ -917,6 +922,24 @@ def create_app() -> FastAPI:
                 break
         gc.collect()
         return {"voxels": voxels, "dims": [nx, ny, nz], "count": len(voxels), "truncated": truncated}
+
+    @app.post("/api/calibration/steps")
+    def calibration_steps(req: CalibrationRequest) -> dict:
+        config = _config(req.config)
+        spec = calibration.build_spec(req.spec or {}, config.printer)
+        return {"steps": calibration.measurement_steps(spec)}
+
+    @app.post("/api/calibration/solve")
+    def calibration_solve_endpoint(req: SolveRequest) -> dict:
+        """Phase 2: given the assumed pitch + the filled measurement.csv, fit the true
+        XY pitch, the gray→bloom curve, cure threshold, and resolution limit."""
+        config = _config(req.config)
+        try:
+            rows = calibration_solve.parse_measurements(req.csv or "")
+        except Exception as error:  # noqa: BLE001 - surface a bad CSV as 400
+            raise HTTPException(400, f"Could not parse the measurement CSV: {error}") from error
+        answer_key = {"pitch_um": [config.printer.voxel_width_um, config.printer.voxel_length_um]}
+        return calibration_solve.solve(answer_key, rows)
 
     @app.get("/api/check-update")
     def check_update() -> dict:

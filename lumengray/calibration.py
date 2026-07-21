@@ -549,6 +549,38 @@ def answer_key(spec: CalibrationSpec) -> dict:
     }
 
 
+def measurement_steps(spec: CalibrationSpec) -> list:
+    """A curated, ordered list of measurement prompts for the step-by-step wizard (full
+    chip only). Each step carries the nominal value + how to interpret the answer. The
+    UI collects one measurement per step, then feeds them to ``solve``."""
+    if spec.variant == "small":
+        return []
+    px, py = spec.voxel_width_um, spec.voxel_length_um
+    steps = []
+    steps.append({"id": "comb_X", "group": "Scale", "zone": "comb", "axis": "X", "design_gray": 255,
+                  "nominal_um": round(spec.width_px * px), "kind": "length",
+                  "prompt": "Measure the TOP scale bar end-to-end (full width), in µm."})
+    steps.append({"id": "comb_Y", "group": "Scale", "zone": "comb", "axis": "Y", "design_gray": 255,
+                  "nominal_um": round(spec.height_px * py), "kind": "length",
+                  "prompt": "Measure the LEFT scale bar end-to-end (full height), in µm."})
+    blocks = sorted(set(spec.block_mm))
+    for mm in ({blocks[len(blocks) // 2], blocks[-1]} if len(blocks) >= 2 else set(blocks)):
+        for axis, pitch in (("X", px), ("Y", py)):
+            steps.append({"id": f"sq{mm:g}_{axis}", "group": "Scale", "zone": "square", "axis": axis,
+                          "design_gray": 255, "nominal_um": round(mm * 1000), "kind": "length",
+                          "prompt": f"Nested {mm:g} mm square: measure its {axis} edge, in µm."})
+    wmax = spec.feature_widths_px[-1]
+    for g in spec.matrix_grays:
+        steps.append({"id": f"pil_g{g}", "group": "Bloom", "zone": "matrix_pos", "axis": "-",
+                      "design_gray": g, "nominal_um": round(wmax * px), "kind": "length",
+                      "prompt": f"Pillar row gray={g}: measure the widest dot's diameter (µm). "
+                                f"Enter 0 if that row didn't print."})
+    steps.append({"id": "res", "group": "Resolution", "zone": "grating", "kind": "resolution",
+                  "options": [round(w * px) for w in spec.feature_widths_px],
+                  "prompt": "Finest line-pair block still resolved as separate lines? (pick the smallest that's clear)"})
+    return steps
+
+
 def measurement_csv(spec: CalibrationSpec) -> str:
     rows = ["zone,id,axis,design_gray,nominal_um,measured_um,notes"]
     px = spec.voxel_width_um

@@ -306,6 +306,105 @@ async function exportCalibration() {
   }
 }
 
+// Phase 2: a step-by-step measurement wizard → solve → show corrections.
+let calibSteps = [], calibStepIdx = 0, calibAnswers = {};
+
+async function startCalibWizard() {
+  const spec = buildCalibrationSpec();
+  if (spec.variant === "small") { status("Step-by-step calibration is for the full-build chip (switch Chip → Full build).", "error"); return; }
+  status("Preparing calibration steps…", "busy");
+  try {
+    const res = await postJSON("/api/calibration/steps", { config: buildConfig(), spec });
+    calibSteps = res.steps || [];
+    if (!calibSteps.length) { status("No steps for this chip.", "error"); return; }
+    calibStepIdx = 0; calibAnswers = {};
+    $("calib-solve-out").hidden = true;
+    $("calib-wiz").hidden = false;
+    renderWizStep();
+    status("Measure each feature and enter the value.");
+  } catch (e) { status(e.message, "error"); }
+}
+
+function renderWizStep() {
+  const s = calibSteps[calibStepIdx], w = $("calib-wiz");
+  const prev = calibAnswers[s.id] ?? "";
+  const input = s.kind === "resolution"
+    ? `<select id="calib-wiz-input"><option value="">— none resolved —</option>${s.options.map((o) => `<option value="${o}" ${String(o) === String(prev) ? "selected" : ""}>${o} µm</option>`).join("")}</select>`
+    : `<input type="number" id="calib-wiz-input" step="any" placeholder="measured µm" value="${prev}" />`;
+  const last = calibStepIdx === calibSteps.length - 1;
+  w.innerHTML = `
+    <div class="wiz-head"><span class="badge">${s.group}</span><span class="hint">${calibStepIdx + 1} / ${calibSteps.length}</span></div>
+    <p class="wiz-prompt">${s.prompt}</p>
+    ${s.nominal_um != null ? `<p class="hint">nominal: ${s.nominal_um} µm</p>` : ""}
+    <div class="wiz-input">${input}</div>
+    <div class="row">
+      <button class="ghost-btn" id="wiz-back" ${calibStepIdx === 0 ? "disabled" : ""}>← Back</button>
+      <button class="ghost-btn" id="wiz-skip">Skip</button>
+      <button class="primary-btn" id="wiz-next">${last ? "Finish & compute" : "Next →"}</button>
+    </div>`;
+  const store = () => { const v = $("calib-wiz-input").value; if (v !== "") calibAnswers[s.id] = v; else delete calibAnswers[s.id]; };
+  $("calib-wiz-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("wiz-next").click(); });
+  $("calib-wiz-input").focus();
+  $("wiz-back").addEventListener("click", () => { store(); calibStepIdx--; renderWizStep(); });
+  $("wiz-skip").addEventListener("click", () => { delete calibAnswers[s.id]; advanceWiz(); });
+  $("wiz-next").addEventListener("click", () => { store(); advanceWiz(); });
+}
+
+function advanceWiz() {
+  if (calibStepIdx < calibSteps.length - 1) { calibStepIdx++; renderWizStep(); }
+  else finishCalibWizard();
+}
+
+// Build solve-compatible CSV rows from the collected answers, then solve.
+async function finishCalibWizard() {
+  const lines = ["zone,id,axis,design_gray,nominal_um,measured_um,notes"];
+  const resStep = calibSteps.find((s) => s.kind === "resolution");
+  for (const s of calibSteps) {
+    if (s.kind === "resolution") continue;
+    const v = calibAnswers[s.id];
+    if (v == null || v === "") continue;
+    lines.push(`${s.zone},${s.id},${s.axis},${s.design_gray},${s.nominal_um},${v},`);
+  }
+  if (resStep) {
+    const finest = parseFloat(calibAnswers[resStep.id]);
+    if (Number.isFinite(finest)) resStep.options.forEach((o, i) => lines.push(`grating,w${i},pitch,255,${o},,${o >= finest ? "y" : "n"}`));
+  }
+  status("Computing corrections…", "busy");
+  try {
+    const res = await postJSON("/api/calibration/solve", { config: buildConfig(), csv: lines.join("\n") });
+    $("calib-wiz").hidden = true;
+    const out = $("calib-solve-out");
+    out.hidden = false;
+    out.innerHTML = renderSolveResult(res);
+    const ap = document.getElementById("calib-apply-pitch");
+    if (ap) ap.addEventListener("click", () => {
+      const set = (id, val) => { $(id).value = val; $(id).dispatchEvent(new Event("input", { bubbles: true })); };
+      set("voxel-width-um", ap.dataset.x); set("voxel-length-um", ap.dataset.y);
+      status(`Applied true pitch ${ap.dataset.x} / ${ap.dataset.y} µm to the Printer card.`);
+    });
+    status("Calibration computed.");
+  } catch (e) { status(e.message, "error"); }
+}
+
+function renderSolveResult(res) {
+  const s = res.scale || {};
+  const axisRow = (a) => s[a]
+    ? `<b>${a}:</b> true pitch <b>${s[a].true_pitch_um} µm</b> <span class="hint">(assumed ${s[a].assumed_pitch_um}, scale ×${s[a].scale}, R²=${s[a].r2}, n=${s[a].n})</span>`
+    : `<b>${a}:</b> <span class="hint">— need ≥2 measured scale features</span>`;
+  const bloom = (res.bloom?.curve || []).map((p) => `<tr><td>${p.gray}</td><td>${p.bloom_um} µm</td></tr>`).join("");
+  const th = res.threshold || {}, rz = res.resolution || {};
+  const applyBtn = s.X ? `<button class="ghost-btn" id="calib-apply-pitch" data-x="${s.X.true_pitch_um}" data-y="${(s.Y || s.X).true_pitch_um}">Apply true pitch to the Printer card</button>` : "";
+  return `
+    <h3>Scale / pixel pitch</h3>
+    <p>${axisRow("X")}</p><p>${axisRow("Y")}</p>${applyBtn}
+    <h3>Gray → lateral bloom</h3>
+    ${bloom ? `<table class="calib-tbl"><tr><th>gray</th><th>bloom radius</th></tr>${bloom}</table>` : "<p class='hint'>no matrix measurements found</p>"}
+    <h3>Limits</h3>
+    <p>Cure threshold g_min: <b>${th.g_min ?? "—"}</b>${th.vanished_grays?.length ? ` <span class="hint">· vanished: ${th.vanished_grays.join(", ")}</span>` : ""}</p>
+    <p>Finest resolved: <b>${rz.finest_resolved_um ?? "—"} µm</b></p>
+    ${res.warnings?.length ? `<p class="hint">⚠ ${res.warnings.join("; ")}</p>` : ""}`;
+}
+
 async function requestPreview() {
   if (!state.id) return;
   if (state.controller) state.controller.abort();
@@ -580,6 +679,7 @@ function wire() {
   $("calib-btn").addEventListener("click", () => setCalibPage(true));
   $("calib-back").addEventListener("click", () => setCalibPage(false));
   $("calib-export").addEventListener("click", exportCalibration);
+  $("calib-wiz-start").addEventListener("click", startCalibWizard);
   ["calib-chipmm", "calib-pyr", "calib-cmin", "calib-cmax", "calib-chn", "calib-chw", "calib-base", "calib-feat", "calib-wedge", "calib-material", "calib-exposure"].forEach((id) =>
     $(id).addEventListener("input", scheduleCalibPreview));
   document.querySelectorAll("#calib-view-seg button").forEach((btn) =>
