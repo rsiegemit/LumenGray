@@ -25,7 +25,7 @@
       </div>
     </div>
     <div class="topbar-actions">
-      <button class="ghost-btn" id="calib-btn" title="Open the LumenX calibration chip — a full-build test print for dimensional + grayscale calibration">Calibration chip</button>
+      <button class="ghost-btn" id="calib-btn" title="Open the LumenX calibration chip — a ~1 cm structural test print (pyramids, channels, grayscale) that measures your printability limits">Calibration chip</button>
       <button class="ghost-btn" id="update-btn" title="Check GitHub for a newer version of LumenGray">Check for updates</button>
       <a class="ghost-btn" href="https://github.com/rsiegemit/LumenGray" target="_blank" rel="noopener">GitHub ↗</a>
       <button id="export-btn" class="primary-btn" disabled title="Render every layer and download the full photostack as a .zip (with manifest.json).">Export stack (.zip)</button>
@@ -341,24 +341,24 @@
           <h2>LumenX calibration chip</h2>
           <button class="ghost-btn" id="calib-back">← Back to studio</button>
         </div>
-        <p class="hint">A single full-build test print that measures how faithfully your LumenX
-          reproduces <strong>dimensions</strong> and <strong>grayscale</strong>. Everything is a
-          robust <strong>gel feature</strong> (no text/thin rulers — they don't print in hydrogel);
-          labels live in the reference map. Export it, print it, measure under a microscope / calipers.</p>
+        <p class="hint">A small (~1 cm) <strong>gel</strong> test print that finds your printer's
+          <strong>structural limits</strong>. Everything is a robust gel feature, sized across a sweep
+          so you can see which survive. Export it, print it, measure under a microscope / calipers,
+          then run the step-by-step calibration below.</p>
         <ul class="calib-legend">
-          <li><b>Scale rulers (X/Y)</b> — true pixel pitch &amp; anisotropy. Fixes "prints come out the wrong size."</li>
-          <li><b>Dimensional squares</b> — is the scale error size-dependent?</li>
-          <li><b>Grayscale step wedge</b> — which grays cure, and how (0→255).</li>
-          <li><b>Gray × feature matrix</b> — how features grow (pillars) / shrink (holes) at each gray. The core map.</li>
-          <li><b>Resolution grating</b> — smallest resolvable line pairs.</li>
-          <li><b>Outer frame &amp; L-ruler</b> — measurement datum, squareness/rotation, and orientation.</li>
+          <li><b>Pyramids (out)</b> — tapering solid pyramids, small→large. Smallest that holds = min printable pillar.</li>
+          <li><b>Wells (pyramids in)</b> — funnel wells, small→large. Smallest that stays open = min open well.</li>
+          <li><b>Channels</b> — open trenches, narrow→wide. Narrowest still open = min open channel.</li>
+          <li><b>Grayscale checker</b> — pixel-scale grays over a range. Do neighbouring grays stay distinct?</li>
         </ul>
       </section>
 
       <section class="card">
         <h2>Parameters</h2>
-        <label class="seg-label">Chip</label>
-        <div class="segmented small" id="calib-variant" title="Small is a resizable ~1 cm chip for the small plate (3D pyramids, channels, grayscale-checker); Full fills the whole build area.">
+        <!-- Chip-variant toggle hidden: only the small ~1 cm chip is offered on the
+             frontend. The full-build chip remains supported in the backend. -->
+        <label class="seg-label" hidden>Chip</label>
+        <div class="segmented small" id="calib-variant" hidden>
           <button data-variant="small" class="active">Small chip</button>
           <button data-variant="full">Full build</button>
         </div>
@@ -386,7 +386,7 @@
 
       <section class="card">
         <h2>Step-by-step calibration</h2>
-        <p class="hint">Print the full-build chip and measure it under a scope / calipers. This walks you through each measurement one at a time, then computes the true pixel pitch, the gray→bloom curve, cure threshold, and resolution.</p>
+        <p class="hint">Print the chip and measure it under a scope / calipers. This walks you through each measurement one at a time, then records your printability limits (smallest pillar / open well / open channel).</p>
         <button class="ghost-btn" id="calib-wiz-start">Start calibration →</button>
         <div id="calib-wiz" class="calib-wiz" hidden></div>
         <div id="calib-solve-out" class="calib-solve-out" hidden></div>
