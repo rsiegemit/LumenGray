@@ -204,9 +204,11 @@ function scheduleView3D() {
 // ── Calibration chip (its own page) ──────────────────────
 function buildCalibrationSpec() {
   const i = (id, d) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) ? v : d; };
+  const f = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : d; };
   return {
     variant: document.querySelector("#calib-variant button.active")?.dataset.variant || "full",
     chip_mm: i("calib-chipmm", 10),
+    chip_height_mm: f("calib-height", 2),
     pyramid_grid: i("calib-pyr", 2),
     checker_min: i("calib-cmin", 0),
     checker_max: i("calib-cmax", 255),
@@ -230,9 +232,77 @@ function setCalibPage(on) {
 // Chip-size applies only to the small chip; the wedge steps only to the full chip.
 function applyCalibVariant() {
   const small = document.querySelector("#calib-variant button.active")?.dataset.variant === "small";
-  ["calib-chipmm-wrap", "calib-pyr-wrap", "calib-cmin-wrap", "calib-cmax-wrap", "calib-chn-wrap", "calib-chw-wrap"]
+  ["calib-chipmm-wrap", "calib-height-wrap", "calib-pyr-wrap", "calib-cmin-wrap", "calib-cmax-wrap", "calib-chn-wrap", "calib-chw-wrap"]
     .forEach((id) => { $(id).hidden = !small; });
   $("calib-wedge-wrap").hidden = small;
+  $("calib-feat-wrap").hidden = small;   // small chip uses Chip height (mm) instead
+}
+
+// Zoom / pan / scale bar for the calibration image (Reference + Gel-print views),
+// self-contained so it never touches the studio viewer.
+const calibZoom = { z: 1, x: 0, y: 0, drag: null };
+function applyCalibZoom() {
+  const img = $("calib-img");
+  const maxX = Math.max(0, (calibZoom.z - 1) * img.clientWidth / 2);
+  const maxY = Math.max(0, (calibZoom.z - 1) * img.clientHeight / 2);
+  calibZoom.x = Math.max(-maxX, Math.min(maxX, calibZoom.x));
+  calibZoom.y = Math.max(-maxY, Math.min(maxY, calibZoom.y));
+  img.style.transform = `translate(${calibZoom.x}px, ${calibZoom.y}px) scale(${calibZoom.z})`;
+  img.style.cursor = calibZoom.z > 1 ? "grab" : "";
+  updateCalibScale();
+}
+function updateCalibScale() {
+  const bar = $("calib-scale-bar"), img = $("calib-img");
+  if (img.style.display === "none" || !img.naturalWidth) { bar.hidden = true; return; }
+  const rect = img.getBoundingClientRect();
+  const voxelMm = (buildConfig().printer.voxel_width_um || 35) / 1000;
+  const pxPerMm = (rect.width / img.naturalWidth) / voxelMm;
+  if (!isFinite(pxPerMm) || pxPerMm <= 0) { bar.hidden = true; return; }
+  const rawMm = 90 / pxPerMm, pow = Math.pow(10, Math.floor(Math.log10(rawMm))), frac = rawMm / pow;
+  const niceMm = (frac < 1.5 ? 1 : frac < 3.5 ? 2 : frac < 7.5 ? 5 : 10) * pow;
+  bar.hidden = false;
+  $("calib-scale-label").textContent = niceMm >= 1 ? `${+niceMm.toFixed(2)} mm` : `${Math.round(niceMm * 1000)} µm`;
+  bar.querySelector(".scale-bar-line").style.width = (niceMm * pxPerMm) + "px";
+}
+function wireCalibViewer() {
+  const img = $("calib-img"), wrap = $("calib-canvas-wrap"), bar = $("calib-scale-bar");
+  wrap.addEventListener("wheel", (e) => {
+    if ($("calib-3d").style.display !== "none") return;   // 3D has its own orbit controls
+    e.preventDefault();
+    calibZoom.z = Math.max(1, Math.min(16, calibZoom.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    if (calibZoom.z === 1) { calibZoom.x = 0; calibZoom.y = 0; }
+    applyCalibZoom();
+  }, { passive: false });
+  img.addEventListener("pointerdown", (e) => {
+    if (calibZoom.z <= 1) return;
+    e.preventDefault();
+    calibZoom.drag = { sx: e.clientX, sy: e.clientY, ox: calibZoom.x, oy: calibZoom.y };
+    img.style.cursor = "grabbing";
+    img.setPointerCapture(e.pointerId);
+  });
+  img.addEventListener("pointermove", (e) => {
+    if (!calibZoom.drag) return;
+    calibZoom.x = calibZoom.drag.ox + (e.clientX - calibZoom.drag.sx);
+    calibZoom.y = calibZoom.drag.oy + (e.clientY - calibZoom.drag.sy);
+    applyCalibZoom();
+  });
+  const end = () => { calibZoom.drag = null; img.style.cursor = calibZoom.z > 1 ? "grab" : ""; };
+  img.addEventListener("pointerup", end); img.addEventListener("pointercancel", end);
+  // draggable scale bar
+  let bd = null;
+  bar.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); const b = bar.getBoundingClientRect();
+    bd = { dx: e.clientX - b.left, dy: e.clientY - b.top }; bar.classList.add("dragging"); bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (!bd) return; const w = bar.parentElement.getBoundingClientRect();
+    bar.style.left = Math.max(0, Math.min(w.width - bar.offsetWidth, e.clientX - bd.dx - w.left)) + "px";
+    bar.style.top = Math.max(0, Math.min(w.height - bar.offsetHeight, e.clientY - bd.dy - w.top)) + "px";
+    bar.style.bottom = "auto";
+  });
+  const bend = () => { bd = null; bar.classList.remove("dragging"); };
+  bar.addEventListener("pointerup", bend); bar.addEventListener("pointercancel", bend);
+  window.addEventListener("resize", updateCalibScale);
 }
 
 let calibTimer = null;
@@ -252,6 +322,7 @@ async function renderCalibPreview() {
   const img = $("calib-img"), threed = $("calib-3d");
   if (view === "3d") {
     img.style.display = "none"; threed.style.display = "block"; $("calib-scrubber").hidden = true;
+    updateCalibScale();   // hides the scale bar in 3D
     status("Building 3D chip…", "busy");
     try {
       const data = await postJSON("/api/calibration/voxels", { config: buildConfig(), spec });
@@ -279,7 +350,8 @@ async function renderCalibPreview() {
     }
     const blob = await res.blob();
     if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
-    const url = URL.createObjectURL(blob); img.dataset.url = url; img.src = url;
+    const url = URL.createObjectURL(blob); img.dataset.url = url;
+    img.onload = updateCalibScale; img.src = url;
     status(`Calibration chip — ${calibTotal} layers`);
   } catch (e) { status(e.message, "error"); }
 }
@@ -761,9 +833,10 @@ function wire() {
   // calibration chip: its own page (header button), fully separate from the studio
   $("calib-btn").addEventListener("click", () => setCalibPage(true));
   $("calib-back").addEventListener("click", () => setCalibPage(false));
+  wireCalibViewer();
   $("calib-export").addEventListener("click", exportCalibration);
   $("calib-wiz-start").addEventListener("click", startCalibWizard);
-  ["calib-chipmm", "calib-pyr", "calib-cmin", "calib-cmax", "calib-chn", "calib-chw", "calib-base", "calib-feat", "calib-wedge", "calib-material", "calib-exposure"].forEach((id) =>
+  ["calib-chipmm", "calib-height", "calib-pyr", "calib-cmin", "calib-cmax", "calib-chn", "calib-chw", "calib-base", "calib-feat", "calib-wedge", "calib-material", "calib-exposure"].forEach((id) =>
     $(id).addEventListener("input", scheduleCalibPreview));
   document.querySelectorAll("#calib-view-seg button").forEach((btn) =>
     btn.addEventListener("click", () => {

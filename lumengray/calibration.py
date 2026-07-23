@@ -51,7 +51,8 @@ class CalibrationSpec:
     feature_widths_px: tuple = (1, 2, 3, 4, 6, 8, 12)       # columns (line/pillar widths, px)
     block_mm: tuple = (2.0, 5.0, 10.0, 15.0)               # nested square frames
     variant: str = "full"          # "full" (whole build area) | "small" (a 1 cm chip)
-    chip_mm: float = 10.0          # small variant: chip side length
+    chip_mm: float = 10.0          # small variant: chip side length (XY)
+    chip_height_mm: float = 0.0    # small variant: feature height in mm (0 = use feature_layers)
     pyramid_grid: int = 2          # small variant: N x N pyramids per quadrant (base sizes sweep)
     checker_min: int = 64          # small variant: low end of the grayscale-checker range
     checker_max: int = 255         # small variant: high end of the grayscale-checker range
@@ -69,18 +70,24 @@ def build_spec(raw: dict, printer) -> CalibrationSpec:
             return max(0, int(raw.get(k, d)))
         except (TypeError, ValueError):
             return d
+    voxel_height_um = float(printer.voxel_height_um)
+    feature_layers = max(1, _i("feature_layers", 16))
+    chip_height_mm = max(0.0, float(raw.get("chip_height_mm", 0.0) or 0.0))
+    if chip_height_mm > 0:  # physical height overrides the raw feature-layer count
+        feature_layers = max(1, round(chip_height_mm * 1000.0 / voxel_height_um))
     return CalibrationSpec(
         width_px=int(printer.resolution[0]),
         height_px=int(printer.resolution[1]),
         voxel_width_um=float(printer.voxel_width_um),
         voxel_length_um=float(printer.voxel_length_um),
-        voxel_height_um=float(printer.voxel_height_um),
+        voxel_height_um=voxel_height_um,
         margin_px=_i("margin_px", 24),
         base_layers=max(1, _i("base_layers", 8)),
-        feature_layers=max(1, _i("feature_layers", 16)),
+        feature_layers=feature_layers,
         wedge_steps=max(2, _i("wedge_steps", 16)),
         variant=("small" if str(raw.get("variant", "full")) == "small" else "full"),
         chip_mm=max(2.0, float(raw.get("chip_mm", 10.0) or 10.0)),
+        chip_height_mm=chip_height_mm,
         pyramid_grid=max(1, min(6, _i("pyramid_grid", 2))),
         checker_min=max(0, min(255, _i("checker_min", 64))),
         checker_max=max(0, min(255, _i("checker_max", 255))),

@@ -363,14 +363,15 @@
           <button data-variant="full">Full build</button>
         </div>
         <div class="grid2">
-          <label id="calib-chipmm-wrap" hidden title="Small-chip side length in mm — shrink or grow it. Default 10 mm (1 cm).">Chip size (mm)<input type="number" id="calib-chipmm" value="10" min="2" step="1" /></label>
+          <label id="calib-chipmm-wrap" hidden title="Small-chip side length in mm (XY) — shrink or grow it. Default 10 mm (1 cm).">Chip size (mm)<input type="number" id="calib-chipmm" value="10" min="2" step="1" /></label>
+          <label id="calib-height-wrap" hidden title="Small-chip feature height (Z), in mm. Sets how tall the pyramids/channels rise (voxels are 35×35µm XY, layer height µm Z from the Printer card).">Chip height (mm)<input type="number" id="calib-height" value="2" min="0.2" step="0.1" /></label>
           <label id="calib-pyr-wrap" hidden title="Small chip: N×N pyramids &amp; wells per quadrant, with base sizes swept across the grid (which sizes hold?).">Pyramids (N×N)<input type="number" id="calib-pyr" value="2" min="1" max="6" step="1" /></label>
           <label id="calib-cmin-wrap" hidden title="Small chip: low end of the grayscale-checker diagonal (0–255).">Checker min<input type="number" id="calib-cmin" value="64" min="0" max="255" step="1" /></label>
           <label id="calib-cmax-wrap" hidden title="Small chip: high end of the grayscale-checker diagonal (0–255).">Checker max<input type="number" id="calib-cmax" value="255" min="0" max="255" step="1" /></label>
           <label id="calib-chn-wrap" hidden title="Small chip: number of open channels (trenches) in the Channels quadrant.">Channels<input type="number" id="calib-chn" value="4" min="1" max="16" step="1" /></label>
           <label id="calib-chw-wrap" hidden title="Small chip: widest channel in px; widths sweep from 1 up to this (which stay open?).">Channel max (px)<input type="number" id="calib-chw" value="8" min="1" step="1" /></label>
           <label title="Solid-white raft layers printed under the pattern (adhesion + a flat measurement datum).">Base layers<input type="number" id="calib-base" value="8" min="1" step="1" /></label>
-          <label title="How many layers the feature pattern rises (the full chip extrudes it; the small chip builds 3D pyramids/channels over these layers).">Feature layers<input type="number" id="calib-feat" value="16" min="1" step="1" /></label>
+          <label id="calib-feat-wrap" title="How many layers the feature pattern rises (the full chip extrudes it; the small chip uses Chip height instead).">Feature layers<input type="number" id="calib-feat" value="16" min="1" step="1" /></label>
           <label id="calib-wedge-wrap" title="Full chip only: number of patches across the 0→255 grayscale step wedge.">Wedge steps<input type="number" id="calib-wedge" value="16" min="2" step="1" /></label>
           <label title="Recorded in the chip's title block (reference map).">Material<input type="text" id="calib-material" placeholder="GelMA 10%" /></label>
           <label title="Recorded in the chip's title block (reference map).">Exposure<input type="text" id="calib-exposure" placeholder="8s @ 20mW" /></label>
@@ -400,9 +401,10 @@
           <button data-cview="print">Gel print (layers)</button>
           <button data-cview="3d">3D</button>
         </div>
-        <div class="canvas-wrap">
-          <img id="calib-img" alt="calibration chip preview" style="max-width:100%; max-height:100%; image-rendering:pixelated;" />
+        <div class="canvas-wrap" id="calib-canvas-wrap" title="Scroll to zoom · drag to pan">
+          <img id="calib-img" alt="calibration chip preview" style="max-width:100%; max-height:100%; image-rendering:pixelated; transform-origin:center center;" />
           <div id="calib-3d" style="position:absolute; inset:0; display:none;"></div>
+          <div class="scale-bar" id="calib-scale-bar" hidden><span class="scale-bar-label" id="calib-scale-label">—</span><span class="scale-bar-line"></span></div>
         </div>
         <div class="scrubber" id="calib-scrubber" hidden>
           <button class="step" id="calib-prev" title="previous layer">◀</button>

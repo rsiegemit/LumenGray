@@ -68,12 +68,17 @@ with a parametric mm gap so neighbours don't fuse. Each copy renders identically
 gets its own gradient normalization).
 
 **Calibration chip** — a header button opens a dedicated page that generates a **LumenX
-calibration test print** (no STL needed). Two variants: a **full-build chip** (scale bars,
-grayscale step wedge, gray×feature matrix, resolution grating) and a resizable **1 cm chip**
-for the small plate (3D **pyramids**, open **channels**, a grayscale **checker**), with a 3D
-view + layer scrubber. Everything printable in hydrogel — labels live in an exported
-`reference.png`, never in the print. The **X/Y voxel pitch** is editable in the Printer card to
-correct dimensional scale once you measure a print.
+calibration test print** (no STL needed). The focus is a resizable **~1 cm gel chip** for the
+small plate — genuinely 3D, printable in hydrogel: **pyramids** (min printable pillar),
+**wells** (min open well), **channels** (min open width), and a grayscale **checker** — with
+adjustable chip size, height (Z), pyramid grid, channel count, and checker range. Every voxel is
+35 × 35 µm XY × the layer-height µm Z. Views: a labeled **reference** map (labels live only here /
+in the exported `reference.png`, never in the print), the **gel-print** layers, and a **3D** view —
+all with scroll-to-zoom, pan, and a draggable **scale bar**. Print it, measure it, then the
+**step-by-step wizard** records your **printability limits**; on any studio export, features below
+a limit are **flagged** and — only if you tick **"Allow"** — grown to the printable minimum. The
+**X/Y voxel pitch** is editable in the Printer card to correct dimensional scale. (A full-build
+dimensional/grayscale chip + solver also exist in the backend.)
 
 **Reproducible** — every export ships a `manifest.json` (source model + every parameter) and a
 parameter-encoded filename; a whole run is described by one JSON config. Drop that
