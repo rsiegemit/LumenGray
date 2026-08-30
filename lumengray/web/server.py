@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import urllib.request
 import uuid
 import zipfile
@@ -40,7 +41,8 @@ from .presets import PRESETS, build_preset_mesh, get_preset, mode_of, resolve_pa
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
-MAX_UPLOADS = 64  # bound the in-memory registry (shared/public deploys); oldest is evicted
+MAX_UPLOADS = 64  # hard cap on the in-memory registry (shared/public deploys)
+UPLOAD_TTL_SECONDS = 2 * 60 * 60  # reap models idle this long; each access refreshes the clock
 
 GITHUB_REPO = "rsiegemit/LumenGray"
 RELEASES_LATEST_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -63,6 +65,7 @@ class Upload:
     mesh: trimesh.Trimesh
     meta: dict  # origin: uploaded filename, or preset name + dimensions used
     owner: str | None = None  # session that uploaded it; only that session may read it back
+    last_seen: float = 0.0  # monotonic clock of the last access; refreshed on every _get
 
 
 class PresetRequest(BaseModel):
@@ -216,6 +219,7 @@ def create_app() -> FastAPI:
         # Same 404 for missing and not-yours, so an id can't be probed for existence.
         if item is None or (item.owner is not None and item.owner != session):
             raise HTTPException(404, "Unknown model id - upload an STL first")
+        item.last_seen = time.monotonic()  # touch → an in-use model is never the reaper's victim
         return item
 
     def _config(raw: dict):
@@ -229,24 +233,36 @@ def create_app() -> FastAPI:
         mesh = orient_mesh(item.mesh.copy(), config.rotation_deg)
         return array_mesh(mesh, config.array_count, config.array_spacing_mm)
 
-    def _evict_over_cap() -> None:
-        # FIFO eviction so the in-memory registry (and its temp files) stays bounded on a
-        # long-lived shared deploy. dict preserves insertion order → the first key is oldest.
+    def _drop(upload_id: str) -> None:
+        item = uploads.pop(upload_id, None)
+        if item is None:
+            return
+        try:
+            if os.path.exists(item.path):
+                os.remove(item.path)
+        except OSError:
+            pass
+
+    def _reap() -> None:
+        # Keep the in-memory registry (and its temp files) bounded on a long-lived shared
+        # deploy WITHOUT evicting a model that's actively in use: first drop anything idle
+        # past the TTL, then, if still over the hard cap, drop least-recently-used (smallest
+        # last_seen) — and an in-use model has a fresh last_seen, so it's never the victim.
+        now = time.monotonic()
+        for uid in [uid for uid, it in uploads.items() if now - it.last_seen > UPLOAD_TTL_SECONDS]:
+            _drop(uid)
         while len(uploads) > MAX_UPLOADS:
-            old_id, old = next(iter(uploads.items()))
-            uploads.pop(old_id, None)
-            try:
-                if os.path.exists(old.path):
-                    os.remove(old.path)
-            except OSError:
-                pass
+            lru_id = min(uploads, key=lambda uid: uploads[uid].last_seen)
+            _drop(lru_id)
 
     def _register(mesh: trimesh.Trimesh, name: str, meta: dict, owner: str | None = None) -> dict:
         upload_id = uuid.uuid4().hex
         path = os.path.join(upload_dir, f"{upload_id}.stl")
         mesh.export(path)
-        uploads[upload_id] = Upload(path=path, name=name, mesh=mesh, meta=meta, owner=owner)
-        _evict_over_cap()
+        uploads[upload_id] = Upload(
+            path=path, name=name, mesh=mesh, meta=meta, owner=owner, last_seen=time.monotonic()
+        )
+        _reap()
         extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
         return {
             "id": upload_id,
