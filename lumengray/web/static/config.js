@@ -87,7 +87,7 @@ export function buildConfig() {
     printer: {
       resolution: [int("res-w", 1920), int("res-h", 1080)],
       voxel_width_um: num("voxel-width-um", 35),   // X pitch (editable — calibration)
-      voxel_length_um: num("voxel-length-um", 35), // Y pitch (editable — calibration)
+      voxel_length_um: num("voxel-length-um", 35), // Y pitch — manifest metadata only (render uses square X pitch)
       voxel_height_um: num("voxel-height-um", 50),
     },
     model: {
@@ -217,7 +217,7 @@ export function applyConfig(c) {
     setVal("gy-cell", gy.cell_mm);
     setVal("gy-channel", gy.channel_px);
     setVal("gy-skin", gy.skin_px);
-    if (gy.route) setVal("gy-route", gy.route);
+    if (gy.route) setVal("gy-route", gy.route === "tpms" ? "organic" : gy.route);  // back-compat: tpms renamed to organic
     if ($("gy-drain")) $("gy-drain").checked = !!gy.drain;
     if (gy.void_max != null) setVal("gy-voidmax", gy.void_max);
   }

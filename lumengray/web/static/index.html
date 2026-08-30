@@ -9,8 +9,8 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      "three": "/static/vendor/three/three.module.js",
+      "three/addons/": "/static/vendor/three/addons/"
     }
   }
   </script>
@@ -87,7 +87,7 @@
             <option value="100">100</option>
           </select></label>
           <label title="X (column) voxel pitch in microns — the LumenX native pixel is 35µm. Raise it to compensate if prints come out oversized (calibration).">Voxel width X (µm)<input type="number" id="voxel-width-um" value="35" min="1" step="0.5" /></label>
-          <label title="Y (row) voxel pitch in microns (35µm native). Set independently from X to correct anisotropy.">Voxel length Y (µm)<input type="number" id="voxel-length-um" value="35" min="1" step="0.5" /></label>
+          <label title="Y (row) voxel pitch in microns (35µm native). Recorded in the manifest for reference; the slicer renders a square XY pitch from Voxel width X, so this value does not change the exported stack.">Voxel length Y (µm)<input type="number" id="voxel-length-um" value="35" min="1" step="0.5" /></label>
         </div>
       </section>
 
@@ -210,9 +210,9 @@
         <div class="overlay-block" id="gyroid-block" title="Find every void in the tessellation cell (cores + graded void→light→void shells) and link them all into one connected, drainable network. Because the cell is periodic, the channels are planned on one unit cell and tiled, so the network matches the real voids exactly. Needs voids (a 'Black core (px)' > 0, or a grade that ramps to 0). Cubic + octet.">
           <label class="overlay-head"><input type="checkbox" id="gyroid-on" /> Connect voids <span class="hint" id="gyroid-hint">— void-matching network</span></label>
           <div class="grid2" id="gyroid-params" hidden>
-            <label title="Channel routing between voids: Geodesic = shortest straight tubes; TPMS = organic curved tubes. Both link the same real voids.">Route<select id="gy-route">
+            <label title="Channel routing between voids: Geodesic = shortest straight tubes; Organic = curved (sinusoidal) tubes. Both link the same real voids.">Route<select id="gy-route">
               <option value="geodesic" selected>Geodesic</option>
-              <option value="tpms">TPMS</option>
+              <option value="organic">Organic</option>
             </select></label>
             <label class="checkrow" title="Breach the outer skin at the ports so the network drains to the surface (perfusion). Off = fully enclosed."><input type="checkbox" id="gy-drain" /> Drain to surface</label>
             <label title="What counts as void: any voxel with exposure at or below this becomes lumen (0) and gets linked. 0 = only fully-black. Raise it (e.g. 10, 30) to connect a gradient's near-0 cores.">Void ≤<input type="number" id="gy-voidmax" value="0" min="0" max="254" step="1" /></label>

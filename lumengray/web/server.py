@@ -23,14 +23,14 @@ from dataclasses import dataclass, replace
 import numpy as np
 import trimesh
 from scipy import ndimage
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import Cookie, Depends, FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from PIL import Image
 from pydantic import BaseModel
 
-from .. import calibration, calibration_solve
+from .. import __version__, calibration, calibration_solve
 from ..config import ConfigError, config_from_dict
 from ..octet import octet_struts
 from ..pipeline import render_layer, resolve_regions, run
@@ -40,6 +40,7 @@ from .presets import PRESETS, build_preset_mesh, get_preset, mode_of, resolve_pa
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+MAX_UPLOADS = 64  # bound the in-memory registry (shared/public deploys); oldest is evicted
 
 GITHUB_REPO = "rsiegemit/LumenGray"
 RELEASES_LATEST_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -61,6 +62,7 @@ class Upload:
     name: str
     mesh: trimesh.Trimesh
     meta: dict  # origin: uploaded filename, or preset name + dimensions used
+    owner: str | None = None  # session that uploaded it; only that session may read it back
 
 
 class PresetRequest(BaseModel):
@@ -186,7 +188,7 @@ def _element_cell_struts(config):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="LumenGray", version="0.1.0")
+    app = FastAPI(title="LumenGray", version=__version__)
     uploads: dict[str, Upload] = {}
     upload_dir = tempfile.mkdtemp(prefix="lumengray_uploads_")
 
@@ -197,9 +199,22 @@ def create_app() -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    def _get(upload_id: str) -> Upload:
+    def _session(response: Response, lg_session: str | None = Cookie(default=None)) -> str:
+        # Per-browser session id so one visitor's uploaded model isn't reachable by
+        # another on a shared (public) deployment. Set on first request; local
+        # single-user runs just keep one cookie for the life of the tab.
+        if lg_session:
+            return lg_session
+        new_id = uuid.uuid4().hex
+        response.set_cookie(
+            "lg_session", new_id, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 7
+        )
+        return new_id
+
+    def _get(upload_id: str, session: str | None = None) -> Upload:
         item = uploads.get(upload_id)
-        if item is None:
+        # Same 404 for missing and not-yours, so an id can't be probed for existence.
+        if item is None or (item.owner is not None and item.owner != session):
             raise HTTPException(404, "Unknown model id - upload an STL first")
         return item
 
@@ -214,11 +229,24 @@ def create_app() -> FastAPI:
         mesh = orient_mesh(item.mesh.copy(), config.rotation_deg)
         return array_mesh(mesh, config.array_count, config.array_spacing_mm)
 
-    def _register(mesh: trimesh.Trimesh, name: str, meta: dict) -> dict:
+    def _evict_over_cap() -> None:
+        # FIFO eviction so the in-memory registry (and its temp files) stays bounded on a
+        # long-lived shared deploy. dict preserves insertion order → the first key is oldest.
+        while len(uploads) > MAX_UPLOADS:
+            old_id, old = next(iter(uploads.items()))
+            uploads.pop(old_id, None)
+            try:
+                if os.path.exists(old.path):
+                    os.remove(old.path)
+            except OSError:
+                pass
+
+    def _register(mesh: trimesh.Trimesh, name: str, meta: dict, owner: str | None = None) -> dict:
         upload_id = uuid.uuid4().hex
         path = os.path.join(upload_dir, f"{upload_id}.stl")
         mesh.export(path)
-        uploads[upload_id] = Upload(path=path, name=name, mesh=mesh, meta=meta)
+        uploads[upload_id] = Upload(path=path, name=name, mesh=mesh, meta=meta, owner=owner)
+        _evict_over_cap()
         extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
         return {
             "id": upload_id,
@@ -233,7 +261,7 @@ def create_app() -> FastAPI:
         return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
     @app.post("/api/upload")
-    async def upload(file: UploadFile) -> dict:
+    async def upload(file: UploadFile, session: str = Depends(_session)) -> dict:
         data = await file.read()
         if not data:
             raise HTTPException(400, "Empty file")
@@ -250,7 +278,7 @@ def create_app() -> FastAPI:
             if os.path.exists(tmp):
                 os.remove(tmp)
         name = file.filename or "model.stl"
-        return _register(mesh, name, {"kind": "upload", "filename": name})
+        return _register(mesh, name, {"kind": "upload", "filename": name}, owner=session)
 
     @app.get("/api/presets")
     def presets() -> list[dict]:
@@ -271,7 +299,7 @@ def create_app() -> FastAPI:
         return out
 
     @app.post("/api/preset/{preset_id}")
-    def load_preset(preset_id: str, req: PresetRequest | None = None) -> dict:
+    def load_preset(preset_id: str, req: PresetRequest | None = None, session: str = Depends(_session)) -> dict:
         preset = get_preset(preset_id)
         if preset is None:
             raise HTTPException(404, "Unknown preset")
@@ -282,20 +310,20 @@ def create_app() -> FastAPI:
         except Exception as error:  # noqa: BLE001 - bad dimensions → 400, not 500
             raise HTTPException(400, f"Could not build model: {error}") from error
         meta = {"kind": "preset", "preset_id": preset_id, "name": preset["name"], "dimensions_mm": values}
-        result = _register(mesh, f"{preset['name']}.stl", meta)
+        result = _register(mesh, f"{preset['name']}.stl", meta, owner=session)
         result["config"] = preset["config"]
         result["params"] = preset["params"]
         result["values"] = values
         return result
 
     @app.get("/api/model/{upload_id}")
-    def model(upload_id: str) -> FileResponse:
-        item = _get(upload_id)
+    def model(upload_id: str, session: str = Depends(_session)) -> FileResponse:
+        item = _get(upload_id, session)
         return FileResponse(item.path, media_type="model/stl", filename=item.name)
 
     @app.post("/api/info")
-    def info(req: InfoRequest) -> dict:
-        item = _get(req.id)
+    def info(req: InfoRequest, session: str = Depends(_session)) -> dict:
+        item = _get(req.id, session)
         config = _config(req.config)
         mesh = _oriented(item, config)
         extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
@@ -311,8 +339,8 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/preview")
-    def preview(req: PreviewRequest) -> Response:
-        item = _get(req.id)
+    def preview(req: PreviewRequest, session: str = Depends(_session)) -> Response:
+        item = _get(req.id, session)
         config = _config(req.config)
         mesh = _oriented(item, config)
         total = count_layers(mesh, config.printer)
@@ -336,8 +364,8 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/export")
-    def export(req: ExportRequest) -> FileResponse:
-        item = _get(req.id)
+    def export(req: ExportRequest, session: str = Depends(_session)) -> FileResponse:
+        item = _get(req.id, session)
         config = _config(req.config)
         work_dir = tempfile.mkdtemp(prefix="lumengray_export_")
         out_dir = os.path.join(work_dir, "layers")
@@ -369,8 +397,8 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/stack")
-    def stack(req: StackRequest) -> dict:
-        item = _get(req.id)
+    def stack(req: StackRequest, session: str = Depends(_session)) -> dict:
+        item = _get(req.id, session)
         config = _config(req.config)
         mesh = _oriented(item, config)
         total = count_layers(mesh, config.printer)
@@ -421,8 +449,8 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/voxels")
-    def voxels(req: VoxelRequest) -> dict:
-        item = _get(req.id)
+    def voxels(req: VoxelRequest, session: str = Depends(_session)) -> dict:
+        item = _get(req.id, session)
         config = _config(req.config)
         mesh = _oriented(item, config)
         total = count_layers(mesh, config.printer)
@@ -528,13 +556,13 @@ def create_app() -> FastAPI:
 
 
     @app.post("/api/cage")
-    def cage(req: CageRequest) -> dict:
+    def cage(req: CageRequest, session: str = Depends(_session)) -> dict:
         """Procedural strut-edge cage for a tessellation: the vertical columns at
         the grid nodes + the horizontal frame edges, drawn as crisp 3D line
         segments computed from the lattice parameters (clipped to the part's
         footprint). Shows the cubic/triangular lattice the coarse voxel view can't
         resolve. Returns [] for non-tessellation modes."""
-        item = _get(req.id)
+        item = _get(req.id, session)
         config = _config(req.config)
         cub, tri, oct = config.tessellation, config.triangulation, config.octet
         if cub is None and tri is None and oct is None:
@@ -676,7 +704,7 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/native")
-    def native(req: NativeRequest) -> Response:
+    def native(req: NativeRequest, session: str = Depends(_session)) -> Response:
         """1:1 machine-resolution voxels: every voxel is exactly one print pixel
         (35µm XY) × one layer (50µm Z), coloured by its real exposure and filtered
         to the requested bands (white=structure, gray=diffusion, black=lumen/void).
@@ -684,7 +712,7 @@ def create_app() -> FastAPI:
         metadata in the X-Meta header. Capped at max_voxels with a truncated flag.
         The band checkboxes are filters (which voxels to include); each voxel carries
         its true grayscale value so the view shows the full gradient, not 3 buckets."""
-        item = _get(req.id)
+        item = _get(req.id, session)
         config = _config(req.config)
         mesh = _oriented(item, config)
         total = count_layers(mesh, config.printer)
@@ -931,12 +959,12 @@ def create_app() -> FastAPI:
         return {"voxels": voxels, "dims": [nx, ny, nz], "count": len(voxels), "truncated": truncated}
 
     @app.post("/api/printability-check")
-    def printability_check(req: PrintCheckRequest) -> dict:
+    def printability_check(req: PrintCheckRequest, session: str = Depends(_session)) -> dict:
         """Phase 3 (flagging only — mutates NOTHING): sample the loaded design's
         photostack and detect solid features thinner than min_pillar and voids
         narrower than min_channel, via morphological opening. Reports counts per
         category so the UI can warn and ask permission before any fix."""
-        item = _get(req.id)
+        item = _get(req.id, session)
         config = _config(req.config)
         limits = req.limits or {}
         mesh = _oriented(item, config)

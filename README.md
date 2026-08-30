@@ -13,8 +13,9 @@ live browser studio.
 
 ## Download
 
-The desktop apps bundle everything (no Python needed). Launch one and it starts a local
-server and opens the studio in your browser.
+The desktop apps bundle everything — Python, dependencies, and the 3D viewer's three.js — so
+they work fully offline. Launch one and it starts a local server and opens the studio in your
+browser; your models never leave your computer.
 
 | Platform | Get it | Install |
 |----------|--------|---------|
@@ -55,7 +56,7 @@ server and opens the studio in your browser.
   view.
 - **Connect voids** — link every void into one connected, drainable **lumen network**.
   **Void ≤** sets what counts as void (raise it to catch a gradient's *near*-black cores, not
-  just exact black); channels are straight (`geodesic`) or organic (`tpms`); **Drain** breaches
+  just exact black); channels are straight (`geodesic`) or organic (`organic`); **Drain** breaches
   the outer skin to reach the surface.
 
 **Live 3D studio** — orbit the model in five views: **Mesh**, **Photostack**, **Wireframe**
@@ -82,7 +83,9 @@ dimensional/grayscale chip + solver also exist in the backend.)
 
 **Reproducible** — every export ships a `manifest.json` (source model + every parameter) and a
 parameter-encoded filename; a whole run is described by one JSON config. Drop that
-`manifest.json` back onto the studio to restore the whole session.
+`manifest.json` back onto the studio to restore the whole session. Two tiers of restore: a
+**built-in preset** is rebuilt *exactly* (the mesh is regenerated from its recorded dimensions),
+while an **uploaded STL** restores every *setting* but not the mesh — re-select the STL to re-run it.
 
 ![3D model view](docs/screenshot-3d.png)
 
@@ -186,7 +189,7 @@ are optional.
     },
 
     "connect_voids": {                           // link every void into one drainable network
-      "route": "geodesic",                       // "geodesic" (straight) | "tpms" (curved)
+      "route": "geodesic",                       // "geodesic" (straight) | "organic" (curved; "tpms" accepted as a legacy alias)
       "void_max": 0,                             // exposure ≤ this counts as void (0 = only black)
       "channel_px": 1,                           // carved channel width (voxels)
       "drain": false,                            // true → breach the skin to drain to the surface
@@ -218,8 +221,9 @@ STL ─► orient ─► slice (trimesh) ─► per-layer binary mask ─► gra
 | `triangulation.py` | triangular-prism kind, reusing the shared base |
 | `octet.py` | octet truss: strut generator + per-layer voxelizer + inward-depth field |
 | `grade.py` | structure→core exposure ramp applied to each mode's depth field |
-| `void_connect.py` | void-connector — unit-cell tiling (cubic/octet) + 2D-extrude (triangular), geodesic/tpms |
-| `gyroid.py` | legacy gyroid (TPMS) surface — fallback connector for pure-gradient parts |
+| `void_connect.py` | void-connector — unit-cell tiling (cubic/octet) + 2D-extrude (triangular), geodesic/organic; also the 2D fallback connector for pure-gradient parts |
+| `gyroid.py` | legacy gyroid (TPMS) surface — currently unused, kept for reference |
+| `min_feature.py` | calibration grow-to-min post-process — thickens sub-limit struts / widens sub-limit voids (opt-in; byte-for-byte no-op otherwise) |
 | `geometry.py` | mm ↔ output-pixel coordinate mapping |
 | `config.py` | immutable, validated config + JSON (de)serialization |
 | `pipeline.py` | end-to-end run, shared single-layer renderer, manifest + naming |

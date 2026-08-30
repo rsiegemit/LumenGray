@@ -6,4 +6,4 @@ the frozen desktop app knows exactly which version it is — which is what the i
 "Check for updates" button compares against the latest GitHub release.
 """
 
-__version__ = "0.1.3"
+__version__ = "0.1.18"

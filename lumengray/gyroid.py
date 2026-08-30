@@ -18,10 +18,10 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
-from .config import GyroidChannel, Printer
+from .config import VoidConnect, Printer
 
 
-def gyroid_carve(layer: np.ndarray, solid: np.ndarray, layer_index: int, printer: Printer, g: GyroidChannel) -> np.ndarray:
+def gyroid_carve(layer: np.ndarray, solid: np.ndarray, layer_index: int, printer: Printer, g: VoidConnect) -> np.ndarray:
     """Return ``layer`` with a gyroid-surface void carved through the solid."""
     width_mm = printer.voxel_width_um / 1000.0
     length_mm = printer.voxel_length_um / 1000.0

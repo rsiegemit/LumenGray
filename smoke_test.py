@@ -1,5 +1,6 @@
 """End-to-end smoke test: generate an STL, run the pipeline, assert outputs."""
 
+import json
 import os
 import tempfile
 
@@ -221,7 +222,51 @@ def main():
     assert piece_vals <= {0, 128, 255}, piece_vals  # stepped ramp: only the stop levels
     assert stack_basename(cont, "x").endswith("grade-lin2"), stack_basename(cont, "x")
 
+    # --- unit-cell void connector (cubic): the tiling path links every core into one net ---
+    # (The existing gyroid case is non-periodic; this exercises connect_cell's tiling.)
+    cube_solid = np.ones((80, 80), bool)
+    cube_core = _replace(
+        default_config(), default_solid_value=255,
+        tessellation=_replace(default_tessellation(), cube_xy_px=10, cube_z_layers=8, core_px=4, boundary_px=0),
+    )
+    cube_conn = _replace(cube_core, gyroid=_replace(default_gyroid(), channel_px=2, route="geodesic", skin_px=2))
+    span = range(12, 28)
+    vol_off = np.stack([render_layer(cube_solid, i, 60, cube_core, (), 0.035) <= 0 for i in span])
+    vol_on = np.stack([render_layer(cube_solid, i, 60, cube_conn, (), 0.035) <= 0 for i in span])
+    assert vol_off.any(), "cubic cores produced no void to connect"
+    n_off = int(_ndi.label(vol_off)[1])
+    n_on = int(_ndi.label(vol_on)[1])
+    assert n_on < n_off, f"cubic connector didn't merge cores: on={n_on} off={n_off}"
+    assert n_on == 1, f"cubic void net not fully connected: {n_on} components (expected 1)"
+
+    # --- manifest / config round trip: to_dict -> from_dict is stable (drives load-to-restore) ---
+    from lumengray.config import config_from_dict, config_to_dict
+
+    for rc in (default_config(), cube_core, gy_cfg, cont):
+        d1 = config_to_dict(rc)
+        assert config_to_dict(config_from_dict(d1)) == d1, "config round trip changed the config"
+    with open(os.path.join(out_uniform, "manifest.json")) as fh:
+        config_from_dict(json.load(fh))  # a written manifest must load back as a config
+
+    # --- band_px crosslink seam: a stepped grade with band_px lays a white weld the plain step lacks ---
+    from lumengray.grade import apply_ramp
+
+    ramp2d = np.tile(np.linspace(0.0, 1.0, 40), (12, 1))
+    plain = apply_ramp(ramp2d, ((0.0, 0), (1.0, 200)), "step", band_px=0)
+    welded = apply_ramp(ramp2d, ((0.0, 0), (1.0, 200)), "step", band_px=2)
+    assert set(np.unique(plain).tolist()) <= {0.0, 200.0}, np.unique(plain)  # plain step: only stop levels
+    assert int((welded == 255).sum()) > int((plain == 255).sum()), "band_px added no white seam"
+
+    # --- apply_min_feature: byte-for-byte no-op (same object) when nothing qualifies ---
+    from lumengray.min_feature import apply_min_feature
+
+    solid_block = np.full((50, 50), 255, np.uint8)
+    everywhere = np.ones((50, 50), bool)
+    assert apply_min_feature(solid_block, everywhere) is solid_block  # nothing enabled
+    assert apply_min_feature(solid_block, everywhere, min_pillar_px=6, fix_pillar=True) is solid_block  # solid: no thin
+
     print("OK:", expected, "layers, dims", img.shape, "| px+mm regions | clip | gradient | rotate->", rot_summary["layers"], "layers | preview", sheet.size)
+    print("regression guards: cubic connector components on/off", n_on, "/", n_off, "| config round trip | band_px seam | min_feature no-op")
     print("triangular tessellation:", trisum["layers"], "layers | grid+struts+black-core verified | interior void px", interior_black)
     print("octet truss:", octsum["layers"], "layers | values {0,128,255} | sloped-strut XY shift px", white_moves, "| octahedral core max-void px", max(oct_black))
     print("gyroid connector:", gysum["layers"], "layers | carved void px/layer", gy_black, "| connected components", ncomp)

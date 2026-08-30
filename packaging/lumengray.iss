@@ -11,7 +11,7 @@
 
 #define MyAppName "LumenGray"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.1.18"
 #endif
 #define MyAppPublisher "rsiegemit"
 #define MyAppURL "https://github.com/rsiegemit/LumenGray"

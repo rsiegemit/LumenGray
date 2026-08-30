@@ -1,8 +1,8 @@
-// 3D viewer: four orbitable views over the same model — Mesh (the STL),
-// Photostack (thin textured slices), Volume (gap-free voxel solid), and
-// Wireframe (isolate the photostack's white/gray/black exposure bands as
-// cages or blocks). three.js is imported lazily so a CDN hiccup never breaks
-// the core 2D viewer / export.
+// 3D viewer: five orbitable views over the same model — Mesh (the STL),
+// Photostack (thin textured slices), Wireframe (isolate the photostack's
+// exposure bands as cages or blocks), 1:1 Voxels (true per-voxel 0–255
+// exposure), and Element (one unit cell). three.js is vendored locally and
+// imported lazily so it never breaks the core 2D viewer / export.
 
 import { $, state } from "./core.js";
 import { buildConfig } from "./config.js";

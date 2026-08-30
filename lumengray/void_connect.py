@@ -41,12 +41,12 @@ def _disk(radius: int) -> np.ndarray:
 
 
 def _carve_segment_2d(center: np.ndarray, a, b, route: str = "geodesic") -> None:
-    """2D analogue of _carve_segment (a, b are (row, col)); tpms deflects in-plane."""
+    """2D analogue of _carve_segment (a, b are (row, col)); organic deflects in-plane."""
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     d = b - a
     length = float(np.hypot(*d))
-    curved = route == "tpms" and length > 2.0
+    curved = route == "organic" and length > 2.0
     amp = min(length * 0.30, 2.5) if curved else 0.0
     steps = max(int(np.ceil((length + 6.0 * amp) * 3.0)), int(np.max(np.abs(d))), 1)
     ts = np.arange(steps + 1) / steps
@@ -149,14 +149,14 @@ def _write6(mask: np.ndarray, pts: np.ndarray) -> None:
 
 def _carve_segment(centerline: np.ndarray, a, b, route: str = "geodesic") -> None:
     """Rasterize a centerline from a to b into ``centerline`` (in place). ``geodesic``
-    = straight; ``tpms`` = a curved path deflected sideways by a sinusoid that tapers
+    = straight; ``organic`` = a curved path deflected sideways by a sinusoid that tapers
     to zero at both ends, so the endpoints stay anchored on the voids (still connects)
-    while the channel reads as an organic minimal-surface curve."""
+    while the channel reads as an organic curve (not a true minimal surface)."""
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     d = b - a
     length = float(np.linalg.norm(d))
-    curved = route == "tpms" and length > 2.0
+    curved = route == "organic" and length > 2.0
     amp = min(length * 0.30, 2.5) if curved else 0.0
     # Sample densely so consecutive centerline points stay well sub-voxel — a wavy
     # path covers more distance than the chord, so oversample by the amplitude. A

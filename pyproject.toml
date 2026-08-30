@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lumengray"
-version = "0.1.0"
+dynamic = ["version"]
 description = "STL → grayscale photostack studio for the Lumen X3 (CLI + web UI)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,5 +46,8 @@ Repository = "https://github.com/rsiegemit/LumenGray"
 [tool.setuptools]
 packages = ["lumengray", "lumengray.web"]
 
+[tool.setuptools.dynamic]
+version = { attr = "lumengray._version.__version__" }
+
 [tool.setuptools.package-data]
-"lumengray.web" = ["static/*"]
+"lumengray.web" = ["static/*", "static/vendor/three/*", "static/vendor/three/addons/controls/*", "static/vendor/three/addons/loaders/*"]

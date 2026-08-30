@@ -208,7 +208,7 @@ def _cell_void_volume(config: Config):
 def _void_connector(config: Config):
     """Cached (channels K (cz,cx,cx), cx, cz, cap_bottom, cap_top) for the active
     cell, or None (no periodic cell → the mode isn't supported yet). Both routes
-    (geodesic + tpms) connect the real voids here; route only shapes the channel."""
+    (geodesic + organic) connect the real voids here; route only shapes the channel."""
     g = config.gyroid
     if g is None:
         return None
